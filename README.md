@@ -15,15 +15,30 @@
   ```
   (`pyhwpx`는 한글 자동화 보안 DLL 제공용으로만 쓰며, 직접 import하지는 않습니다.)
 
-### 2) 스킬 폴더 넣기
-받은 `hwpx` 폴더를 아래 위치에 통째로 복사합니다.
+### 2) 스킬 설치 — 둘 중 하나
 
-| 범위 | 위치 |
+**(A) git clone — 가장 쉬움 (권장)**
+스킬을 *스킬 폴더 위치에 바로* 내려받습니다.
+```bash
+# 개인용: 모든 프로젝트에서 사용
+git clone https://github.com/sdkparkforbi/claude-skill-hwpx ~/.claude/skills/hwpx
+```
+(Windows PowerShell이면 `~` 대신 `$HOME` 또는 `C:\Users\<내계정>` 사용)
+
+**(B) zip을 받았다면**
+1. zip을 풀면 **`hwpx` 폴더**가 나옵니다(안에 `SKILL.md`, `hwpxgen.py` 등).
+2. 그 **`hwpx` 폴더 자체**를 아래 위치로 옮깁니다.
+
+| 범위 | 옮길 위치(이 안에 hwpx 폴더가 들어가게) |
 |---|---|
-| **개인용**(모든 프로젝트에서 사용) | `C:\Users\<사용자>\.claude\skills\hwpx\` |
-| **프로젝트용**(그 저장소에서만) | `<프로젝트>\.claude\skills\hwpx\` |
+| **개인용** | `C:\Users\<내계정>\.claude\skills\` |
+| **프로젝트용**(그 저장소에서만) | `<프로젝트>\.claude\skills\` |
 
-복사 후 **Claude Code를 새로 시작**하면 스킬이 인식됩니다.
+> ✅ 결과 경로가 **`...\.claude\skills\hwpx\SKILL.md`** 가 되어야 정상.
+> ❌ `...\skills\hwpx\hwpx\SKILL.md` 처럼 **폴더가 이중**으로 들어가면 인식 안 됨.
+
+설치 후 **Claude Code를 새로 시작**하면 스킬이 인식됩니다.
+(`.claude\skills` 폴더가 없으면 직접 만들면 됩니다.)
 
 ### 3) 시드(_seed.hwpx) 재생성 — 한글 버전이 다르면 권장
 `_seed.hwpx`는 만든 PC의 한글 버전 기준입니다. 글자가 깨지거나 색이 이상하면:
