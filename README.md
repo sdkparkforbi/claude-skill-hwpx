@@ -15,30 +15,15 @@
   ```
   (`pyhwpx`는 한글 자동화 보안 DLL 제공용으로만 쓰며, 직접 import하지는 않습니다.)
 
-### 2) 스킬 설치 — 둘 중 하나
-
-**(A) git clone — 가장 쉬움 (권장)**
-스킬을 *스킬 폴더 위치에 바로* 내려받습니다.
+### 2) 스킬 설치 (git clone)
+스킬 폴더 위치에 바로 내려받습니다.
 ```bash
 # 개인용: 모든 프로젝트에서 사용
 git clone https://github.com/sdkparkforbi/claude-skill-hwpx ~/.claude/skills/hwpx
 ```
-(Windows PowerShell이면 `~` 대신 `$HOME` 또는 `C:\Users\<내계정>` 사용)
-
-**(B) zip을 받았다면**
-1. zip을 풀면 **`hwpx` 폴더**가 나옵니다(안에 `SKILL.md`, `hwpxgen.py` 등).
-2. 그 **`hwpx` 폴더 자체**를 아래 위치로 옮깁니다.
-
-| 범위 | 옮길 위치(이 안에 hwpx 폴더가 들어가게) |
-|---|---|
-| **개인용** | `C:\Users\<내계정>\.claude\skills\` |
-| **프로젝트용**(그 저장소에서만) | `<프로젝트>\.claude\skills\` |
-
-> ✅ 결과 경로가 **`...\.claude\skills\hwpx\SKILL.md`** 가 되어야 정상.
-> ❌ `...\skills\hwpx\hwpx\SKILL.md` 처럼 **폴더가 이중**으로 들어가면 인식 안 됨.
-
-설치 후 **Claude Code를 새로 시작**하면 스킬이 인식됩니다.
-(`.claude\skills` 폴더가 없으면 직접 만들면 됩니다.)
+- Windows PowerShell이면 `~` 대신 `$HOME` 또는 `C:\Users\<내계정>` 사용.
+- **협업 프로젝트**라면 그 저장소의 `<프로젝트>\.claude\skills\hwpx\`에 두면 팀원 모두 자동 사용.
+- 설치 후 **Claude Code 재시작**하면 인식됩니다. (`.claude\skills` 폴더가 없으면 만들면 됨)
 
 ### 3) 시드(_seed.hwpx) 재생성 — 한글 버전이 다르면 권장
 `_seed.hwpx`는 만든 PC의 한글 버전 기준입니다. 글자가 깨지거나 색이 이상하면:
@@ -51,29 +36,22 @@ python make_seed.py        # 내 한글로 새 _seed.hwpx 생성
 
 ---
 
-## 보내는 사람: 공유 방법 3가지
+## 보내는 사람: 공유 방법
 
-### 방법 A — 폴더(zip)로 전달 (가장 간단)
-1. `~/.claude/skills/hwpx` 폴더를 zip으로 압축해서 전달.
-2. 받는 사람은 위 "설치 방법"대로 풀어 넣음.
-> ⚠️ `_seed.hwpx`는 동봉해도 되지만, 한글 버전이 다르면 받는 쪽에서 `make_seed.py`로 재생성 권장.
+### 권장 — Git 저장소 링크
+저장소 주소만 알려주면 됩니다. 받는 사람은 위 `git clone` 한 줄로 설치.
+> 협업 프로젝트면 그 저장소의 `.claude/skills/hwpx/`에 커밋 → 팀원 모두 자동 사용.
 
-### 방법 B — Git 저장소
-1. `hwpx` 폴더를 깃 저장소로 push (예: `github.com/<나>/claude-skill-hwpx`).
-2. 받는 사람:
-   ```bash
-   git clone https://github.com/<나>/claude-skill-hwpx ~/.claude/skills/hwpx
-   ```
-> 협업 프로젝트라면 그 저장소의 `.claude/skills/hwpx/`에 커밋하면, 팀원 모두 자동 사용.
-
-### 방법 C — 플러그인 마켓플레이스 (여러 스킬을 배포할 때)
-스킬을 **플러그인**으로 묶어 깃 기반 마켓플레이스로 배포할 수 있습니다.
-받는 사람은 Claude Code에서:
+### 여러 스킬을 함께 배포할 때 — 플러그인 마켓플레이스
+스킬을 **플러그인**으로 묶어 깃 마켓플레이스로 배포. 받는 사람은 Claude Code에서:
 ```
 /plugin marketplace add <github-저장소>
 /plugin install hwpx
 ```
-> 한 번에 여러 스킬·명령을 배포하고 버전 관리하려면 이 방식이 가장 깔끔합니다.
+
+> 오프라인 등 git을 못 쓰는 예외 상황에서만, `hwpx` 폴더를 zip으로 압축해 전달하고
+> 받는 쪽이 `~/.claude/skills/`에 풀어 넣어도 됩니다(결과 경로 `...\skills\hwpx\SKILL.md`).
+> `_seed.hwpx`는 한글 버전이 다르면 받는 쪽에서 `make_seed.py`로 재생성 권장.
 
 ---
 
