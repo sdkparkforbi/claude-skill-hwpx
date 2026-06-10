@@ -112,12 +112,50 @@ class HwpxEditor:
                     t.text = ''
         return total
 
-    # ── 표 행 추가 ──
-    def append_table_row(self, table_index, cells):
-        """table_index번째 표의 마지막 행을 복제해 cells 텍스트로 채워 추가."""
+    # ── 셀 내용 교체 ──
+    def _tables(self):
         tbls = []
         for name in self._sec_names:
             tbls.extend(self._sections[name].iter(_HP + 'tbl'))
+        return tbls
+
+    def set_cell(self, table_index, row, col, text):
+        """table_index번째 표에서 cellAddr=(col,row)인 셀의 텍스트를 교체.
+        lxml 트리 조작이라 정규식 오프셋 밀림 문제가 없다(v5 사례⑤ 대안)."""
+        tbls = self._tables()
+        if table_index >= len(tbls):
+            raise IndexError('표 인덱스 범위 초과: %d (총 %d개)' % (table_index, len(tbls)))
+        tbl = tbls[table_index]
+        target = None
+        for tr in tbl.findall(_HP + 'tr'):           # 직접 행/셀만(중첩표 제외)
+            for tc in tr.findall(_HP + 'tc'):
+                ca = tc.find(_HP + 'cellAddr')
+                if ca is not None and ca.get('colAddr') == str(col) \
+                        and ca.get('rowAddr') == str(row):
+                    target = tc; break
+            if target is not None:
+                break
+        if target is None:
+            raise ValueError('셀을 찾지 못함: 표 %d (col=%d, row=%d)' % (table_index, col, row))
+        sub = target.find(_HP + 'subList')
+        ps = sub.findall(_HP + 'p') if sub is not None else []
+        if not ps:
+            raise ValueError('셀에 단락이 없습니다')
+        # 첫 단락 첫 run에 text, 나머지 run/단락은 비움(셀을 단일 값으로)
+        first_ts = self._own_ts(ps[0])
+        if first_ts:
+            first_ts[0].text = text
+            for extra in first_ts[1:]:
+                extra.text = ''
+        for p in ps[1:]:
+            for t in self._own_ts(p):
+                t.text = ''
+        return True
+
+    # ── 표 행 추가 ──
+    def append_table_row(self, table_index, cells):
+        """table_index번째 표의 마지막 행을 복제해 cells 텍스트로 채워 추가."""
+        tbls = self._tables()
         if table_index >= len(tbls):
             raise IndexError('표 인덱스 범위 초과: %d (총 %d개)' % (table_index, len(tbls)))
         import copy

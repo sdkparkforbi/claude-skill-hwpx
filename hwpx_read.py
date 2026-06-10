@@ -175,6 +175,73 @@ def iter_tables(doc):
     """read_hwpx 결과에서 표만 행렬 리스트로 추출."""
     return [b['rows'] for b in doc.get('blocks', []) if b.get('type') == 'table']
 
+# ───────────────────────── 사전 검증 ─────────────────────────
+def validate(path, pre_bake=True):
+    """한컴으로 열기 전, .hwpx의 알려진 손상 신호를 정적 검사한다.
+    (HWPX 기술문서 v5의 교훈 반영) → (ok: bool, errors: list[str]) 반환.
+
+    구조적 손상(항상 검사) — 한글이 손상으로 인식하는 신호:
+      · 표 id 중복(객체 식별 실패)
+      · 한 표 안에 cellAddr (0,0)이 둘 이상(셀 주소 미설정)
+      · 첫 행의 셀너비 합 ≠ 표 너비(구조 불일치)
+
+    생성단계 규칙(pre_bake=True일 때만) — '아직 baking 안 한 raw 생성물'에만 해당:
+      · 비어있지 않은 linesegarray(빈 태그여야 baking 시 자동 계산 → 안 그러면 글자 겹침)
+      · 표 pos treatAsChar="0"(이 스킬 생성물은 항상 인라인)
+
+    ⚠ 한컴이 '저장(baking)'한 정상 파일은 linesegarray가 채워져 있고 floating 표도
+       정상이다. 따라서 baking된 파일/일반 외부 파일을 검사할 땐 pre_bake=False로 호출해
+       구조적 손상만 본다(그렇지 않으면 오탐).
+    """
+    from lxml import etree
+    errors = []
+    tbl_ids = []
+    bad_lsa = bad_tac = 0
+    with zipfile.ZipFile(path) as z:
+        names = sorted((n for n in z.namelist()
+                        if re.match(r'Contents/section\d+\.xml$', n)),
+                       key=lambda n: int(re.search(r'(\d+)', n).group(1)))
+        for name in names:
+            root = etree.fromstring(z.read(name))
+            for tbl in root.iter(_HP + 'tbl'):
+                tid = tbl.get('id')
+                if tid is not None:
+                    tbl_ids.append(tid)
+                pos = tbl.find(_HP + 'pos')
+                if pos is not None and pos.get('treatAsChar') == '0':
+                    bad_tac += 1
+                # 이 표의 직접 행/셀만(중첩표 제외)
+                trs = tbl.findall(_HP + 'tr')
+                zeros = 0
+                for tr in trs:
+                    for tc in tr.findall(_HP + 'tc'):
+                        ca = tc.find(_HP + 'cellAddr')
+                        if ca is not None and ca.get('colAddr') == '0' and ca.get('rowAddr') == '0':
+                            zeros += 1
+                if zeros > 1:
+                    errors.append('표 id=%s: cellAddr (0,0) 셀이 %d개(표당 1개여야 함)' % (tid, zeros))
+                # 열너비 합 vs 표너비
+                sz = tbl.find(_HP + 'sz')
+                if sz is not None and sz.get('width') and trs:
+                    tw = int(sz.get('width'))
+                    first = trs[0].findall(_HP + 'tc')
+                    csum = sum(int(tc.find(_HP + 'cellSz').get('width'))
+                               for tc in first if tc.find(_HP + 'cellSz') is not None)
+                    if csum and csum != tw:
+                        errors.append('표 id=%s: 첫 행 셀너비 합 %d ≠ 표 너비 %d' % (tid, csum, tw))
+            if pre_bake:
+                for lsa in root.iter(_HP + 'linesegarray'):
+                    if len(lsa):  # 자식 lineseg가 있으면 비어있지 않음
+                        bad_lsa += 1
+    dup = sorted({i for i in tbl_ids if tbl_ids.count(i) > 1})
+    if dup:
+        errors.insert(0, '표 id 중복: %s' % dup)
+    if pre_bake and bad_lsa:
+        errors.append('linesegarray에 내용 있음: %d개(raw 생성물은 빈 태그여야 함; baking된 파일이면 pre_bake=False)' % bad_lsa)
+    if pre_bake and bad_tac:
+        errors.append('treatAsChar="0" 표: %d개(이 스킬 생성물은 인라인; 외부 floating 표면 pre_bake=False)' % bad_tac)
+    return (len(errors) == 0, errors)
+
 # ───────────────────────── CLI ─────────────────────────
 def _main(argv):
     args = [a for a in argv if not a.startswith('-')]
@@ -185,6 +252,17 @@ def _main(argv):
         args = [a for a in args if a != out_path]
     if not args:
         print(__doc__); return 1
+    if '--validate' in argv:
+        rc = 0
+        pre_bake = '--baked' not in argv  # baking된/외부 파일은 --baked로 구조검사만
+        for f in args:
+            ok, errs = validate(f, pre_bake=pre_bake)
+            line = ('[OK] ' if ok else '[FAIL] ') + f
+            sys.stdout.buffer.write((line + '\n').encode('utf-8'))
+            for e in errs:
+                sys.stdout.buffer.write(('   - ' + e + '\n').encode('utf-8'))
+            rc = rc or (0 if ok else 1)
+        return rc
     chunks = []
     for f in args:
         doc = read(f)

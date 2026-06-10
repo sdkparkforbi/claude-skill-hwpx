@@ -28,9 +28,12 @@ import hwpx_read, hwpx_edit, hwpx_convert
 text = hwpx_read.extract_text("RFP.hwp")            # 평문
 doc  = hwpx_read.read_hwpx("양식.hwpx")             # {'blocks':[para|table], 'text'}
 tables = hwpx_read.iter_tables(doc)                 # [[ [행][열] ]]
-# 편집 — 양식 플레이스홀더 채우기 + 표 행 추가
+ok, errs = hwpx_read.validate("작성본.hwpx")        # 한컴 없이 손상 사전검사(raw 생성물)
+ok, errs = hwpx_read.validate("baked.hwpx", pre_bake=False)  # baking된/외부 파일은 구조검사만
+# 편집 — 양식 플레이스홀더 채우기 + 셀 교체 + 표 행 추가
 ed = hwpx_edit.HwpxEditor("양식.hwpx")
 ed.replace_map({"{{과제명}}":"AI 인재양성", "{{금액}}":"5,000,000"})
+ed.set_cell(0, row=1, col=1, text="5,000,000")     # 표0의 (col=1,row=1) 셀만 교체
 ed.append_table_row(0, ["운영비","750,000"])
 ed.save("작성본.hwpx")                              # 이후 python hwpx_bake.py 권장
 # 변환
@@ -70,9 +73,11 @@ hwpx_convert.to_markdown("RFP.hwp")                 # → .md   (순수 파이�
 
 4. **baking + 검증**:
    ```bash
-   python hwpx_bake.py out.hwpx     # 한글로 열고 재저장(필수) + _verify_out.pdf 생성
+   python hwpx_read.py --validate out.hwpx   # (선택) baking 전 손상 사전검사(한컴 불필요)
+   python hwpx_bake.py out.hwpx              # 한글로 열고 재저장(필수) + _verify_out.pdf 생성
    ```
    그 후 PyMuPDF로 PDF를 이미지 렌더해 눈으로 확인하고, **span size가 0.12pt면 charPr 버그**.
+   `validate()`는 표 id 중복·셀주소·열너비합 등 구조 손상을 baking 전에 잡는다(외부/baking된 파일은 `--baked`).
 
 ## 반드시 지킬 함정 (자세한 건 GUIDE.md)
 - **baking 필수**: 빈 `linesegarray`는 한글이 "열 때" 계산 → 안 하면 **글자가 안 보임**.
