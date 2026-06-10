@@ -1,7 +1,7 @@
 # hwpx 스킬 — 설치 & 공유 가이드
 
-파이썬으로 한글 문서(`.hwpx`)를 코드로 생성하는 Claude Code(클로드 코드) **스킬**입니다.
-"hwpx로 만들어줘" 같은 요청에서 자동으로 활용됩니다.
+파이썬으로 한글 문서(`.hwpx`)를 코드로 **생성·읽기·편집·변환**하는 Claude Code(클로드 코드) **스킬**입니다.
+"hwpx로 만들어줘", "hwp 내용 읽어줘", "hwp를 hwpx로 바꿔줘", "양식에 내용 채워줘" 같은 요청에서 자동 활용됩니다.
 
 ---
 
@@ -11,9 +11,13 @@
 - **Windows** + **한컴오피스(한글)** 설치
 - **Python** + 패키지:
   ```bash
-  pip install openpyxl pywin32 pyhwpx PyMuPDF python-docx
+  pip install openpyxl pywin32 pyhwpx PyMuPDF python-docx lxml olefile
   ```
   (`pyhwpx`는 한글 자동화 보안 DLL 제공용으로만 쓰며, 직접 import하지는 않습니다.)
+  (`lxml`·`olefile`은 읽기/편집용, `python-docx`는 →docx 변환용입니다.)
+
+> **읽기·편집·일부 변환(→md/txt/docx)은 한컴오피스 없이도 동작**합니다.
+> 생성·baking·hwp→hwpx·→pdf 변환에만 한컴오피스가 필요합니다.
 
 ### 2) 스킬 설치 (git clone)
 스킬 폴더 위치에 바로 내려받습니다.
@@ -61,14 +65,28 @@ hwpx/
 ├─ SKILL.md        ← 스킬 정의(트리거 설명) — Claude가 읽음
 ├─ README.md       ← (이 파일) 설치·공유 가이드
 ├─ GUIDE.md        ← HWPX 생성 상세 가이드(원리·함정)
-├─ hwpxgen.py      ← 생성 엔진 (표·병합·색·가로/세로)
+├─ hwpxgen.py      ← 생성 엔진 (표·병합·색·이미지·머리말/꼬리말·쪽번호·가로/세로)
+├─ hwpx_read.py    ← 읽기 엔진 (.hwp/.hwpx → 본문·표 추출, 한컴 불필요)
+├─ hwpx_edit.py    ← 편집 엔진 (양식 hwpx 플레이스홀더 치환·표 행 추가)
+├─ hwpx_convert.py ← 변환 엔진 (hwp→hwpx·→pdf/docx/md/txt)
 ├─ hwpx_bake.py    ← 한글로 열고 다시 저장(레이아웃 baking) + 검증 PDF
 ├─ make_seed.py    ← 기준 시드(_seed.hwpx) 재생성
 └─ _seed.hwpx      ← 스타일·색·글자모양 템플릿
 ```
 
+## 기능별 한컴오피스 필요 여부
+| 기능 | 모듈 | 한컴 필요 |
+|------|------|:--------:|
+| 생성 | `hwpxgen.py` (+`hwpx_bake.py`) | ✅ (baking) |
+| 읽기·추출 | `hwpx_read.py` | ❌ |
+| 편집(치환·행추가) | `hwpx_edit.py` (+baking 권장) | ❌ (baking만 ✅) |
+| 변환 hwp→hwpx, →pdf | `hwpx_convert.py` | ✅ |
+| 변환 →docx, →md, →txt | `hwpx_convert.py` | ❌ |
+
 ## 한계 / 주의
-- **Windows + 한컴오피스 전용** (한글 자동화 COM 사용). macOS/Linux 불가.
-- 생성한 hwpx는 **baking 필수**(`hwpx_bake.py`) — 안 하면 글자가 안 보일 수 있음.
+- **생성·baking·hwp→hwpx·→pdf는 Windows + 한컴오피스 전용** (COM 자동화). 읽기·편집·→docx/md/txt는 한컴 없이 동작.
+- 생성·편집한 hwpx는 **baking 권장**(`hwpx_bake.py`) — 안 하면 글자가 안 보일 수 있음.
+- 한컴 자동화에는 **docx SaveAs 필터가 없어** →docx는 `python-docx`로 구조 재구성한다(텍스트·표 보존, 정밀 서식 미보존).
+- .hwp는 순수 파이썬에서 **본문·표 텍스트**까지 추출(셀 구조가 필요하면 `hwp_to_hwpx` 후 `read_hwpx`).
 - 한글 버전 차이로 문제가 생기면 **시드 재생성**이 1차 해결책.
 - 자세한 원리·함정은 `GUIDE.md` 참고.

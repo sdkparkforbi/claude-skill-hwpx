@@ -1,22 +1,45 @@
 ---
 name: hwpx
-description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성한다. 표·셀병합·배경색·글자모양·가로/세로 페이지 지원. 사용자가 "hwpx로 출력/저장/변환", "한글 파일/문서로 만들어", "hwpx 만들어줘", "시간표/회의록/표를 hwpx로", "한글(.hwpx) 생성" 등을 요청할 때 트리거. docx→hwpx 변환이 한컴 자동화에서 실패하는 환경을 전제로, 템플릿 기반 section0.xml 직접 생성 + 한글 baking 방식을 쓴다. (Windows + 한컴오피스 설치 필요)
+description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성·읽기·편집·변환한다. 생성은 표·셀병합·배경색·글자모양·이미지·머리말/꼬리말·쪽번호·가로/세로 페이지 지원. 읽기는 기존 .hwp/.hwpx에서 본문·표 추출(한컴 없이). 편집은 양식 hwpx의 플레이스홀더 치환·표 행 추가. 변환은 hwp→hwpx, →pdf/docx/md. 사용자가 "hwpx로 출력/저장/변환/만들어", "한글 파일/문서로 만들어", "hwp 내용 읽어/추출", "hwp를 hwpx로 변환", "양식에 내용 채워줘", "시간표/회의록/표를 hwpx로" 등을 요청할 때 트리거. (Windows + 한컴오피스 설치 필요; 읽기/편집/일부 변환은 한컴 없이 동작)
 ---
 
-# HWPX 자동 생성 스킬
+# HWPX 생성·읽기·편집·변환 스킬
 
-파이썬으로 `.hwpx`(한글) 문서를 **직접 생성**한다. docx→hwpx **변환에 의존하지 않는다**
-(한컴 설치본에 따라 자동화 Open이 외부형식에서 실패함). 대신 **템플릿의 header.xml을 재사용**하고
-`section0.xml`만 생성→`zipfile` 재패키징→**한글 baking**으로 완성한다.
+파이썬으로 `.hwpx`(한글) 문서를 **생성·읽기·편집·변환**한다. 생성은 docx→hwpx **변환에 의존하지 않고**
+(한컴 설치본에 따라 자동화 Open이 외부형식에서 실패함) **템플릿 header.xml 재사용 + section0.xml 직접 생성
+→ `zipfile` 재패키징 → 한글 baking**으로 완성한다. 읽기/편집은 순수 파이썬(한컴 불필요), 변환 일부는 한컴 COM을 쓴다.
 
-전체 배경·함정·원리는 동봉 `GUIDE.md` 또는 옵시디언 노트 `content/hwpxgen/` 참조.
+전체 배경·함정·원리는 동봉 `GUIDE.md` 참조.
 
 ## 번들 파일
-- `hwpxgen.py` — 생성 엔진(단락/표/병합/색/페이지). **이것을 import해서 쓴다.**
-- `hwpx_bake.py` — 생성한 hwpx를 한글로 열고 다시 저장(레이아웃 재계산) + 검증 PDF.
+- `hwpxgen.py` — **생성** 엔진(단락/표/병합/색/이미지/머리말·꼬리말/쪽번호/페이지). **import해서 쓴다.**
+- `hwpx_read.py` — **읽기** 엔진. .hwp(OLE 레코드)·.hwpx(zip+lxml)에서 본문·표 추출(한컴 불필요).
+- `hwpx_edit.py` — **편집** 엔진. 기존 hwpx의 플레이스홀더 치환(find/replace)·표 행 추가.
+- `hwpx_convert.py` — **변환** 엔진. hwp→hwpx·→pdf(한컴 COM), →docx(python-docx)·→md/txt(순수 파이썬).
+- `hwpx_bake.py` — 생성/편집한 hwpx를 한글로 열고 다시 저장(레이아웃 재계산) + 검증 PDF.
 - `make_seed.py` — 기준 시드(_seed.hwpx)를 새로 만들 때(다른 PC/한글 버전).
 - `_seed.hwpx` — 기준 템플릿(스타일·색 borderFill·글자 charPr 정의 보유).
 - `GUIDE.md` — 상세 가이드(v6).
+
+## 읽기 / 편집 / 변환 빠른 사용
+```python
+import hwpx_read, hwpx_edit, hwpx_convert
+# 읽기 — .hwp/.hwpx 본문·표 추출(한컴 불필요)
+text = hwpx_read.extract_text("RFP.hwp")            # 평문
+doc  = hwpx_read.read_hwpx("양식.hwpx")             # {'blocks':[para|table], 'text'}
+tables = hwpx_read.iter_tables(doc)                 # [[ [행][열] ]]
+# 편집 — 양식 플레이스홀더 채우기 + 표 행 추가
+ed = hwpx_edit.HwpxEditor("양식.hwpx")
+ed.replace_map({"{{과제명}}":"AI 인재양성", "{{금액}}":"5,000,000"})
+ed.append_table_row(0, ["운영비","750,000"])
+ed.save("작성본.hwpx")                              # 이후 python hwpx_bake.py 권장
+# 변환
+hwpx_convert.hwp_to_hwpx("RFP.hwp")                 # .hwp → .hwpx (한컴, 표 보존)
+hwpx_convert.to_pdf("작성본.hwpx")                  # → .pdf  (한컴)
+hwpx_convert.to_docx("양식.hwpx")                   # → .docx (python-docx, 표 보존)
+hwpx_convert.to_markdown("RFP.hwp")                 # → .md   (순수 파이썬)
+```
+> 받은 **.hwp RFP/양식**은 `hwp_to_hwpx`로 올린 뒤 read/edit하면 표 구조까지 다룰 수 있다.
 
 ## 작업 절차
 
@@ -40,6 +63,10 @@ description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성한다. 표
    - 스타일 상수: `CH_TITLE/CH_H1/CH_H2/CH_NORMAL/CH_SMALL/CH_WHITE/CH_CELL`, `PA_CENTER/PA_LEFT`, `BF_DATA`.
    - 임의 크기 글자: `d.char_sz(base_id, height_pt, "RRGGBB", bold=True)`.
    - 셀 병합: `d.cell(..., colspan=N, rowspan=M)` + **가려지는 칸은 생략**, `col/row`는 실제 격자 인덱스.
+   - 이미지(인라인, 글자처럼): `body += d.image("싸인.png", width_mm=40)` — BinData 임베드+매니페스트 자동.
+     크기 미지정 시 픽셀(96dpi) 기준, 한쪽만 주면 비율 유지.
+   - 머리말/꼬리말/쪽번호: `d.set_header("제목")`, `d.set_footer("꼬리말", page_number=True)`,
+     `d.page_number("BOTTOM_CENTER")`. (save 전에 호출; secPr 문단에 컨트롤로 주입됨)
 
 4. **baking + 검증**:
    ```bash

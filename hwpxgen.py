@@ -15,11 +15,41 @@ HWPX 생성 엔진 (범용).
   * 셀 cellAddr=실제(col,row), 병합은 cellSpan(colSpan/rowSpan) + 가려진 칸 생략.
   * 표 id/zOrder는 원본 최댓값+순번으로 고유 부여.
 """
-import re, html, zipfile, os, shutil
+import re, html, zipfile, os, shutil, struct as _struct
 
 HWPU_PER_MM = 283.465
 def mm(v): return int(round(v*HWPU_PER_MM))
 def esc(s): return html.escape(str(s), quote=False)
+
+def _img_pixels(path):
+    """외부 라이브러리 없이 png/jpg/gif/bmp의 (가로,세로) 픽셀 반환. 실패 시 None."""
+    with open(path, 'rb') as f:
+        head = f.read(32)
+    if head[:8] == b'\x89PNG\r\n\x1a\n':
+        return _struct.unpack('>II', head[16:24])
+    if head[:2] == b'\xff\xd8':  # JPEG: SOF 마커 탐색
+        with open(path, 'rb') as f:
+            f.read(2)
+            while True:
+                b = f.read(1)
+                while b and b != b'\xff':
+                    b = f.read(1)
+                marker = f.read(1)
+                if not marker:
+                    break
+                if marker[0] in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6,
+                                 0xC7, 0xC9, 0xCA, 0xCB):
+                    f.read(3)
+                    h, w = _struct.unpack('>HH', f.read(4))
+                    return w, h
+                ln = _struct.unpack('>H', f.read(2))[0]
+                f.seek(ln - 2, 1)
+        return None
+    if head[:6] in (b'GIF87a', b'GIF89a'):
+        return _struct.unpack('<HH', head[6:10])
+    if head[:2] == b'BM':
+        return _struct.unpack('<ii', head[18:26])
+    return None
 
 # 시드에서 확보한 스타일 ID (header.xml)
 CH_TITLE='7'; CH_H1='8'; CH_H2='9'; CH_NORMAL='10'; CH_SMALL='11'; CH_WHITE='12'; CH_CELL='13'
@@ -48,6 +78,10 @@ class HwpxDoc:
         self._added_ch = []
         self._color_bf = {}   # hex -> bf id
         self._color_ch = {}   # (hex,bold,height) -> ch id
+        self._bindata = []    # (arcname, bytes, media_type, item_id) — 삽입 이미지
+        self._sec_ctrls = []  # 섹션 컨트롤 XML(머리말/꼬리말/쪽번호)
+        self._next_img = 1
+        self._inst = 1000000
 
     # ---- header 분석 ----
     def _max_borderfill_id(self):
@@ -171,6 +205,86 @@ class HwpxDoc:
         return (f'<hp:p id="0" paraPrIDRef="{PA_LEFT}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">'
                 f'<hp:run charPrIDRef="0">{tbl}<hp:t/></hp:run><hp:linesegarray/></hp:p>')
 
+    # ---- 이미지 삽입 (인라인, 글자처럼 취급) ----
+    def image(self, path, width_mm=None, height_mm=None, paraPr=PA_CENTER):
+        """이미지 파일을 BinData에 임베드하고 인라인 그림 문단 XML을 반환.
+        크기 미지정 시 픽셀(96dpi) 기준 자동, 한쪽만 주면 비율 유지."""
+        ext = os.path.splitext(path)[1].lower().lstrip('.')
+        if ext == 'jpeg': ext = 'jpg'
+        media = {'png':'image/png','jpg':'image/jpg','bmp':'image/bmp',
+                 'gif':'image/gif','tif':'image/tiff','tiff':'image/tiff'}.get(ext, 'image/'+ext)
+        with open(path, 'rb') as f:
+            raw = f.read()
+        item_id = 'image%d' % self._next_img; self._next_img += 1
+        arc = 'BinData/%s.%s' % (item_id, ext)
+        self._bindata.append((arc, raw, media, item_id))
+        px = _img_pixels(path)
+        if width_mm and height_mm:
+            W, H = mm(width_mm), mm(height_mm)
+        elif width_mm:
+            W = mm(width_mm); H = int(W*(px[1]/px[0])) if px else W
+        elif height_mm:
+            H = mm(height_mm); W = int(H*(px[0]/px[1])) if px else H
+        elif px:
+            W = int(px[0]/96*25.4*HWPU_PER_MM); H = int(px[1]/96*25.4*HWPU_PER_MM)
+        else:
+            W, H = mm(40), mm(30)
+        inst = self._inst; self._inst += 1
+        z = self._z; self._z += 1
+        pid = self._tbl_id; self._tbl_id += 1
+        pic = (f'<hp:pic id="{pid}" zOrder="{z}" numberingType="PICTURE" textWrap="TOP_AND_BOTTOM" '
+               f'textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0" instid="{inst}" reverse="0">'
+               '<hp:offset x="0" y="0"/>'
+               f'<hp:orgSz width="{W}" height="{H}"/><hp:curSz width="0" height="0"/>'
+               '<hp:flip horizontal="0" vertical="0"/>'
+               '<hp:rotationInfo angle="0" centerX="0" centerY="0" rotateimage="0"/>'
+               '<hp:renderingInfo><hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+               '<hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+               '<hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/></hp:renderingInfo>'
+               f'<hc:img binaryItemIDRef="{item_id}" bright="0" contrast="0" effect="REAL_PIC" alpha="0"/>'
+               f'<hp:imgRect><hc:pt0 x="0" y="0"/><hc:pt1 x="{W}" y="0"/>'
+               f'<hc:pt2 x="{W}" y="{H}"/><hc:pt3 x="0" y="{H}"/></hp:imgRect>'
+               f'<hp:imgClip left="0" right="{W}" top="0" bottom="{H}"/>'
+               '<hp:inMargin left="0" right="0" top="0" bottom="0"/>'
+               f'<hp:imgDim dimwidth="{W}" dimheight="{H}"/><hp:effects/>'
+               f'<hp:sz width="{W}" widthRelTo="ABSOLUTE" height="{H}" heightRelTo="ABSOLUTE" protect="0"/>'
+               '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" '
+               'vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+               '<hp:outMargin left="0" right="0" top="0" bottom="0"/></hp:pic>')
+        return (f'<hp:p id="0" paraPrIDRef="{paraPr}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">'
+                f'<hp:run charPrIDRef="{CH_NORMAL}">{pic}<hp:t/></hp:run><hp:linesegarray/></hp:p>')
+
+    # ---- 머리말 / 꼬리말 / 쪽번호 ----
+    def _hdrftr(self, kind, text, charPr, paraPr, page_number=False):
+        runs = ''
+        if text:
+            runs += f'<hp:run charPrIDRef="{charPr}"><hp:t>{esc(text)}</hp:t></hp:run>'
+        if page_number:
+            runs += (f'<hp:run charPrIDRef="{charPr}"><hp:ctrl><hp:autoNum num="1" numType="PAGE">'
+                     '<hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar="" supscript="0"/>'
+                     '</hp:autoNum></hp:ctrl></hp:run>')
+        if not runs:
+            runs = f'<hp:run charPrIDRef="{charPr}"><hp:t></hp:t></hp:run>'
+        sid = 1 if kind == 'header' else 20
+        valign = 'TOP' if kind == 'header' else 'BOTTOM'
+        return (f'<hp:{kind} id="{sid}" applyPageType="BOTH"><hp:subList id="" textDirection="HORIZONTAL" '
+                f'lineWrap="BREAK" vertAlign="{valign}" linkListIDRef="0" linkListNextIDRef="0" '
+                'textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">'
+                f'<hp:p id="0" paraPrIDRef="{paraPr}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">'
+                f'{runs}<hp:linesegarray/></hp:p></hp:subList></hp:{kind}>')
+
+    def set_header(self, text, charPr=CH_NORMAL, paraPr=PA_CENTER):
+        # 주의: self.header(헤더 XML 문자열)와 충돌 피하려고 set_ 접두사 사용
+        self._sec_ctrls.append(self._hdrftr('header', text, charPr, paraPr)); return self
+
+    def set_footer(self, text='', charPr=CH_NORMAL, paraPr=PA_CENTER, page_number=False):
+        self._sec_ctrls.append(self._hdrftr('footer', text, charPr, paraPr, page_number)); return self
+
+    def page_number(self, pos='BOTTOM_CENTER', side_char='-'):
+        """간단 쪽번호(꼬리말 없이도 표시). pos: BOTTOM_CENTER/BOTTOM_RIGHT 등."""
+        self._sec_ctrls.append(f'<hp:pageNum pos="{pos}" formatType="DIGIT" sideChar="{esc(side_char)}"/>')
+        return self
+
     # ---- 최종 저장 ----
     def save(self, out_path, title, title_charPr=CH_TITLE, body=''):
         # 헤더 갱신: borderFills/charPrs 추가
@@ -188,19 +302,33 @@ class HwpxDoc:
         # 섹션 머리: secPr 포함 첫 문단까지 + pagePr 교체
         head=self.section[: self.section.find('</hp:ctrl></hp:run>')+len('</hp:ctrl></hp:run>')]
         head=re.sub(r'<hp:pagePr\b.*?</hp:pagePr>', self._pagepr, head, count=1, flags=re.DOTALL)
+        # 섹션 컨트롤(머리말/꼬리말/쪽번호)을 secPr 문단 안에 run으로 주입
+        ctrl_runs=''.join(f'<hp:run charPrIDRef="0"><hp:ctrl>{c}</hp:ctrl></hp:run>'
+                          for c in self._sec_ctrls)
         # 첫 문단을 제목으로 채우고 닫기 (paraPrIDRef=20 가운데정렬 유지)
         title_run=f'<hp:run charPrIDRef="{title_charPr}"><hp:t>{esc(title)}</hp:t></hp:run><hp:linesegarray/></hp:p>'
-        section=head+title_run+body+'</hs:sec>'
-        # 재패키징 (원본 infolist 순서 유지)
+        section=head+ctrl_runs+title_run+body+'</hs:sec>'
+        # content.hpf 매니페스트에 임베드 이미지 항목 추가
+        def patch_hpf(hpf):
+            if not self._bindata: return hpf
+            items=''.join(f'<opf:item id="{iid}" href="{arc}" media-type="{mt}" isEmbeded="1"/>'
+                          for arc,_raw,mt,iid in self._bindata)
+            return hpf.replace('</opf:manifest>', items+'</opf:manifest>', 1)
+        # 재패키징 (원본 infolist 순서 유지 + BinData 추가)
         with zipfile.ZipFile(self.template) as zin, zipfile.ZipFile(out_path,'w',zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
                 if item.filename=='Contents/header.xml':
                     zout.writestr(item, header.encode('utf-8'))
                 elif item.filename=='Contents/section0.xml':
                     zout.writestr(item, section.encode('utf-8'))
+                elif item.filename=='Contents/content.hpf':
+                    zout.writestr(item, patch_hpf(zin.read(item.filename).decode('utf-8')).encode('utf-8'))
                 elif item.filename=='mimetype':
                     # mimetype은 무압축이어야 안전
                     zout.writestr(item, zin.read(item.filename))
                 else:
                     zout.writestr(item, zin.read(item.filename))
+            # 임베드 이미지 파일 추가
+            for arc,raw,_mt,_iid in self._bindata:
+                zout.writestr(arc, raw)
         return out_path
