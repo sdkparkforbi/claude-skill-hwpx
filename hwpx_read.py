@@ -13,13 +13,18 @@ HWP / HWPX 읽기·추출 엔진.
              hwpx 변환 후(4단계 hwpx_convert) 다시 읽는다.
 
 주요 API
-  extract_text(path)            -> str            형식 자동판별 후 평문 추출
+  extract_text(path, revisions='final') -> str   평문 추출. 교정추적 .hwpx는
+                                                 'final'(적용)/'original'(거부)/'merge'(옛 동작)
   read_hwpx(path)               -> dict           {'format','blocks':[para|table],'text'}
   read_hwp(path)                -> dict           {'format','paragraphs','text'}
+  read_changes(path)            -> dict           교정추적 분리: {has_changes,changes,
+                                                 original,final,authors,orphans,...} (.hwpx 전용)
   iter_tables(doc)              -> list[list[list[str]]]   표만 골라 행렬로
 
 CLI
   python hwpx_read.py 파일.hwp [파일2.hwpx ...] [--json] [-o out.txt]
+  python hwpx_read.py 파일.hwpx --changes      # 삽입/삭제 변경 목록
+  python hwpx_read.py 파일.hwpx --validate     # baking 전 손상 검사
 """
 import sys, os, io, re, zlib, struct, json, zipfile
 
@@ -106,6 +111,7 @@ def read_hwp(path):
 
 # ───────────────────────── HWPX (ZIP+XML) ─────────────────────────
 _HP = '{http://www.hancom.co.kr/hwpml/2011/paragraph}'
+_HH = '{http://www.hancom.co.kr/hwpml/2011/head}'
 
 def _xml_text_of_para(p):
     """hp:p 안의 모든 hp:t 텍스트를 이어붙임."""
@@ -163,12 +169,184 @@ def read_hwpx(path):
                 text_lines.append(' | '.join(c.replace('\n', ' ') for c in r))
     return {'format': 'hwpx', 'blocks': blocks, 'text': '\n'.join(text_lines)}
 
+# ───────────────────── 변경 내용 추적 (track changes) ─────────────────────
+# HWPX는 교정추적을 다음과 같이 저장한다.
+#   · header.xml : <hh:trackChange type="Insert|Delete|CharShape|ParaShape"
+#                    date=.. authorID=.. id=../>, <hh:trackChangeAuthor name=.. id=../>
+#   · section*.xml : 본문에 인라인 제어 마커
+#       <hp:insertBegin Id=.. TcId=../> … <hp:insertEnd Id=.. TcId=../>
+#       <hp:deleteBegin Id=.. TcId=../> … <hp:deleteEnd Id=.. TcId=../>
+#     사이의 hp:t 텍스트가 그 구간의 삽입/삭제 대상이다(TcId가 header 정의와 연결).
+#
+# ⚠ 함정(실측): .hwp → .hwpx 변환(hwpx_convert, 한컴 COM)이 **종료 마커를 누락**시키는
+#   경우가 있다(insertBegin 135 / insertEnd 134 식으로 1개 어긋남). 종료 없는 구간(orphan)을
+#   그대로 두면 그 뒤 본문 전체가 삭제/삽입으로 오분류되어 "참고문헌이 통째로 사라짐" 같은
+#   파국적 오판이 난다. 아래 구현은 (1) 정상적으로 닫힌 구간만 신뢰하고 (2) orphan 구간은
+#   해당 '문단 끝'에서 강제로 닫아 피해를 1문단으로 한정하며 (3) orphans 개수를 보고한다.
+#   orphans>0이면 결과를 한컴 최종본과 대조 검증할 것(hwpx_convert.accepted_text 참고).
+#
+# ⚠ 평문 추출의 함정: extract_text(... revisions='merge')나 .hwp 바이너리 리더는 삽입+삭제
+#   텍스트를 한 흐름으로 이어붙인다 → 예: 참고문헌 재번호 중 옛 번호[7]가 지워지고 새 번호[34]가
+#   들어가면 "[347]"처럼 보인다(원고 오류가 아니라 추적 흔적). 깨끗한 본문은 revisions='final'.
+
+def _read_trackchange_meta(z):
+    """header.xml → (changes{id:{type,date,authorID}}, authors{id:name})."""
+    from lxml import etree
+    changes, authors = {}, {}
+    try:
+        root = etree.fromstring(z.read('Contents/header.xml'))
+    except KeyError:
+        return changes, authors
+    for a in root.iter(_HH + 'trackChangeAuthor'):
+        authors[a.get('id')] = a.get('name')
+    for tc in root.iter(_HH + 'trackChange'):
+        changes[tc.get('id')] = {'type': tc.get('type'),
+                                 'date': tc.get('date'),
+                                 'authorID': tc.get('authorID')}
+    return changes, authors
+
+def _merge_changes(items):
+    """인접한 같은 종류·같은 TcId·같은 문단의 변경 텍스트만 하나로 합친다
+    (문단을 넘어 합치지 않음 → 서로 다른 위치의 편집이 뭉치는 것 방지)."""
+    merged = []
+    for c in items:
+        if (merged and merged[-1]['type'] == c['type']
+                and merged[-1]['tc'] == c['tc']
+                and merged[-1]['para'] == c['para']):
+            merged[-1]['text'] += c['text']
+        else:
+            merged.append(dict(c))
+    return merged
+
+def read_changes(path, final_text=None):
+    """HWPX의 교정추적(삽입/삭제)을 분리 추출한다(한컴 불필요).
+
+    반환 dict:
+      has_changes : bool                삽입/삭제 마커 존재 여부
+      authors     : {id: name}          변경 작성자
+      meta_counts : {type: n}           header 기준 변경 종류별 개수(CharShape 등 포함)
+      changes     : [ {type:'insert'|'delete', text, tc, author, date, para} ]
+      original    : str                 변경 거부본(=일반+삭제 텍스트)
+      final       : str                 변경 적용본(=일반+삽입 텍스트)
+      orphans     : int                 종료 마커 누락 구간 수(>0이면 검증 권장)
+
+    final_text(선택): 한컴 GetTextFile로 얻은 '권위 있는 최종(적용)본' 평문
+      (hwpx_convert.accepted_text). 주면 orphan으로 인한 오판을 보정한다 →
+      · 최종본에 그대로 남아있는 텍스트는 '삭제'로 보지 않는다(거짓 삭제 제거).
+      · 반환 final 필드를 이 권위 텍스트로 대체한다.
+      (단 삽입은 종료마커가 누락된 경우 원본 부재로 완전 복원이 불가하여 best-effort.)
+
+    .hwp는 미지원 → hwpx_convert.hwp_to_hwpx로 변환 후 사용.
+    """
+    from lxml import etree
+    if detect_format(path) != 'hwpx':
+        raise ValueError('read_changes는 .hwpx 전용입니다. '
+                         'hwpx_convert.hwp_to_hwpx(path)로 변환 후 사용하세요.')
+    with zipfile.ZipFile(path) as z:
+        meta, authors = _read_trackchange_meta(z)
+        names = sorted((n for n in z.namelist()
+                        if re.match(r'Contents/section\d+\.xml$', n)),
+                       key=lambda n: int(re.search(r'(\d+)', n).group(1)))
+        tokens = []   # ('ib'|'ie'|'db'|'de', Id, TcId) | ('t', text) | ('p',)
+        for name in names:
+            ctx = etree.iterparse(io.BytesIO(z.read(name)), events=('start', 'end'))
+            for ev, el in ctx:
+                tag = el.tag.rsplit('}', 1)[-1]
+                if ev == 'start':
+                    if tag == 'insertBegin': tokens.append(('ib', el.get('Id'), el.get('TcId')))
+                    elif tag == 'insertEnd': tokens.append(('ie', el.get('Id'), el.get('TcId')))
+                    elif tag == 'deleteBegin': tokens.append(('db', el.get('Id'), el.get('TcId')))
+                    elif tag == 'deleteEnd': tokens.append(('de', el.get('Id'), el.get('TcId')))
+                elif tag == 't' and el.text:
+                    tokens.append(('t', el.text))
+                elif tag == 'p':
+                    tokens.append(('p',))
+
+    # pass1 — orphan(종료 마커 없는 Begin) 탐지. Id 재사용 대비 type별 스택 매칭.
+    ins_stack, del_stack, orphan = [], [], set()
+    for k, tok in enumerate(tokens):
+        if tok[0] == 'ib': ins_stack.append((tok[1], k))
+        elif tok[0] == 'db': del_stack.append((tok[1], k))
+        elif tok[0] == 'ie':
+            for j in range(len(ins_stack) - 1, -1, -1):
+                if ins_stack[j][0] == tok[1]: ins_stack.pop(j); break
+        elif tok[0] == 'de':
+            for j in range(len(del_stack) - 1, -1, -1):
+                if del_stack[j][0] == tok[1]: del_stack.pop(j); break
+    for _id, k in ins_stack + del_stack:
+        orphan.add(k)
+
+    # pass2 — 분류. open_* = [Id, TcId, is_orphan].
+    # orphan 처리: 오라클(final_text) 없으면 문단 끝에서 강제 종료(cap; 피해 1문단 한정).
+    # 오라클 있으면 종료하지 않고(bleed) 흘려보낸 뒤, 최종본에 남은 텍스트의 거짓 삭제를
+    # 뒤에서 걷어낸다 → 종료마커가 누락된 삽입 구간까지 복원된다.
+    cap_orphans = (final_text is None)
+    open_ins, open_del = [], []
+    para = 1
+    raw_changes, original, final = [], [], []
+    for k, tok in enumerate(tokens):
+        kind = tok[0]
+        if kind == 'ib': open_ins.append([tok[1], tok[2], k in orphan])
+        elif kind == 'db': open_del.append([tok[1], tok[2], k in orphan])
+        elif kind == 'ie':
+            for j in range(len(open_ins) - 1, -1, -1):
+                if open_ins[j][0] == tok[1]: open_ins.pop(j); break
+        elif kind == 'de':
+            for j in range(len(open_del) - 1, -1, -1):
+                if open_del[j][0] == tok[1]: open_del.pop(j); break
+        elif kind == 'p':
+            if cap_orphans:
+                open_ins = [s for s in open_ins if not s[2]]   # orphan 종료(cap)
+                open_del = [s for s in open_del if not s[2]]
+            original.append('\n'); final.append('\n')
+            para += 1
+        elif kind == 't':
+            txt = tok[1]
+            if open_del:                       # 삭제(거부본에만 남음)
+                tc = open_del[-1][1]; m = meta.get(tc, {})
+                raw_changes.append({'type': 'delete', 'text': txt, 'tc': tc, 'para': para,
+                                    'author': authors.get(m.get('authorID')), 'date': m.get('date')})
+                original.append(txt)
+            elif open_ins:                     # 삽입(적용본에만 남음)
+                tc = open_ins[-1][1]; m = meta.get(tc, {})
+                raw_changes.append({'type': 'insert', 'text': txt, 'tc': tc, 'para': para,
+                                    'author': authors.get(m.get('authorID')), 'date': m.get('date')})
+                final.append(txt)
+            else:                              # 일반(양쪽 공통)
+                original.append(txt); final.append(txt)
+
+    meta_counts = {}
+    for v in meta.values():
+        meta_counts[v['type']] = meta_counts.get(v['type'], 0) + 1
+    changes = _merge_changes(raw_changes)
+    final_str = ''.join(final)
+    if final_text is not None:
+        # 권위 최종본으로 거짓 삭제 보정: 최종본에 남은 텍스트는 삭제가 아니다.
+        cmp = re.sub(r'\s+', '', final_text)
+        changes = [c for c in changes
+                   if not (c['type'] == 'delete'
+                           and re.sub(r'\s+', '', c['text']) in cmp)]
+        final_str = final_text
+    return {'has_changes': any(t[0] in ('ib', 'db') for t in tokens),
+            'authors': authors, 'meta_counts': meta_counts,
+            'changes': changes, 'orphans': len(orphan),
+            'original': ''.join(original), 'final': final_str}
+
 # ───────────────────────── 디스패치 ─────────────────────────
 def read(path):
     fmt = detect_format(path)
     return read_hwpx(path) if fmt == 'hwpx' else read_hwp(path)
 
-def extract_text(path):
+def extract_text(path, revisions='final'):
+    """평문 추출. 교정추적이 있는 .hwpx는 revisions로 어느 판본을 뽑을지 정한다.
+       'final'    : 변경 적용본(기본) — 깨끗한 현재 본문
+       'original' : 변경 거부본 — 편집 전 원문
+       'merge'    : 마커 무시·삽입+삭제 동시 출력(옛 동작; 번호가 겹쳐 보일 수 있음)
+    .hwp(바이너리)는 항상 merge 동작."""
+    if revisions != 'merge' and detect_format(path) == 'hwpx':
+        ch = read_changes(path)
+        if ch['has_changes']:
+            return ch['original'] if revisions == 'original' else ch['final']
     return read(path)['text']
 
 def iter_tables(doc):
@@ -251,7 +429,33 @@ def _main(argv):
         out_path = argv[argv.index('-o') + 1]
         args = [a for a in args if a != out_path]
     if not args:
-        print(__doc__); return 1
+        sys.stdout.buffer.write((__doc__ or '').encode('utf-8'))  # cp949 콘솔 크래시 방지
+        return 1
+    if '--changes' in argv:
+        rc = 0
+        for f in args:
+            try:
+                ch = read_changes(f)
+            except ValueError as e:
+                sys.stdout.buffer.write(('[SKIP] %s — %s\n' % (f, e)).encode('utf-8')); rc = 1; continue
+            lines = ['=' * 70, '%s  [변경 추적]' % f, '=' * 70]
+            if not ch['has_changes']:
+                lines.append('교정추적 변경 없음.')
+            else:
+                who = ', '.join('%s(%s)' % (n, i) for i, n in ch['authors'].items())
+                lines.append('작성자: %s | 변경종류: %s' % (who, ch['meta_counts']))
+                if ch['orphans']:
+                    lines.append('⚠ 종료 마커 누락 구간 %d개 — 결과를 한컴 최종본과 대조 권장' % ch['orphans'])
+                ins = [c for c in ch['changes'] if c['type'] == 'insert']
+                dele = [c for c in ch['changes'] if c['type'] == 'delete']
+                lines.append('── 삽입 %d건 ──' % len(ins))
+                for c in ins:
+                    lines.append('  [+] (문단 %s) %s' % (c['para'], c['text'][:120].replace('\n', ' ')))
+                lines.append('── 삭제 %d건 ──' % len(dele))
+                for c in dele:
+                    lines.append('  [-] (문단 %s) %s' % (c['para'], c['text'][:120].replace('\n', ' ')))
+            sys.stdout.buffer.write(('\n'.join(lines) + '\n').encode('utf-8'))
+        return rc
     if '--validate' in argv:
         rc = 0
         pre_bake = '--baked' not in argv  # baking된/외부 파일은 --baked로 구조검사만

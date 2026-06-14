@@ -18,12 +18,14 @@ HWP/HWPX 포맷 변환 엔진.
   to_pdf(src, dst=None)             # → .pdf
   to_docx(src, dst=None)            # → .docx
   to_markdown(src, dst=None)        # 순수 파이썬, 표는 마크다운 표로
-  to_text(src, dst=None)            # 순수 파이썬 평문
+  to_text(src, dst=None)            # 순수 파이썬 평문(교정추적 .hwpx면 변경 적용본)
+  accepted_text(src, dst=None)      # 한컴 GetTextFile = 변경 적용(최종)본의 권위 텍스트
 
 CLI
   python hwpx_convert.py 입력.hwp -o 출력.hwpx
   python hwpx_convert.py 입력.hwpx --md -o 출력.md
   python hwpx_convert.py 입력.hwp --pdf
+  python hwpx_convert.py 입력.hwp --final-text -o 최종.txt
 """
 import sys, os, io
 
@@ -165,11 +167,33 @@ def to_text(src, dst=None):
         return dst
     return txt
 
+def accepted_text(src, dst=None):
+    """한컴으로 연 뒤 GetTextFile로 평문 추출 → **변경 적용(최종)본**의 권위 있는 텍스트.
+
+    핵심(실측): 한컴 GetTextFile('TEXT')은 보기 모드와 무관하게 늘 '변경 내용 적용된'
+    최종 텍스트를 돌려준다(삭제 텍스트는 빠지고 삽입은 포함). 또한 자동화에서 변경내용
+    수락/거부 액션(RevisionApplyAll 등)은 no-op이라 '원본(거부)본'은 이 방식으로 못 만든다.
+    → 편집 전 원문이 필요하면 hwpx_read.read_changes(...)['original']을 쓰고,
+      교정추적 .hwpx의 final 추출이 의심스러울 때(orphans>0) 이 함수로 교차검증한다.
+    .hwp/.hwpx 모두 직접 입력 가능(변환 불필요)."""
+    hwp = _get_hwp()
+    src = os.path.abspath(src)
+    if not hwp.Open(src, _fmt_of(src), ''):
+        raise RuntimeError('한컴이 파일을 열지 못했습니다: %s' % src)
+    txt = hwp.GetTextFile('TEXT', '') or ''
+    hwp.Clear(1)
+    if dst:
+        with io.open(dst, 'w', encoding='utf-8') as f:
+            f.write(txt)
+        return dst
+    return txt
+
 # ───────────────────────── CLI ─────────────────────────
 def _main(argv):
     args = [a for a in argv if not a.startswith('-')]
     if not args:
-        print(__doc__); return 1
+        sys.stdout.buffer.write((__doc__ or '').encode('utf-8'))  # cp949 콘솔 크래시 방지
+        return 1
     src = args[0]
     out = None
     if '-o' in argv:
@@ -179,6 +203,8 @@ def _main(argv):
             r = to_markdown(src, out or _default_out(src, '.md'))
         elif '--txt' in argv:
             r = to_text(src, out or _default_out(src, '.txt'))
+        elif '--final-text' in argv:
+            r = accepted_text(src, out or _default_out(src, '.final.txt'))
         elif '--pdf' in argv:
             r = to_pdf(src, out)
         elif '--docx' in argv:

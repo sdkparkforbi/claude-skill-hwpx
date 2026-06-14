@@ -79,6 +79,7 @@ hwpx/
 |------|------|:--------:|
 | 생성 | `hwpxgen.py` (+`hwpx_bake.py`) | ✅ (baking) |
 | 읽기·추출 | `hwpx_read.py` | ❌ |
+| 교정추적(변경 내용) 분리 | `hwpx_read.py` (`read_changes`) | ❌ (.hwp는 변환만 ✅) |
 | 편집(치환·행추가) | `hwpx_edit.py` (+baking 권장) | ❌ (baking만 ✅) |
 | 변환 hwp→hwpx, →pdf | `hwpx_convert.py` | ✅ |
 | 변환 →docx, →md, →txt | `hwpx_convert.py` | ❌ |
@@ -88,5 +89,6 @@ hwpx/
 - 생성·편집한 hwpx는 **baking 권장**(`hwpx_bake.py`) — 안 하면 글자가 안 보일 수 있음.
 - 한컴 자동화에는 **docx SaveAs 필터가 없어** →docx는 `python-docx`로 구조 재구성한다(텍스트·표 보존, 정밀 서식 미보존).
 - .hwp는 순수 파이썬에서 **본문·표 텍스트**까지 추출(셀 구조가 필요하면 `hwp_to_hwpx` 후 `read_hwpx`).
+- **교정추적(변경 내용)**: `read_changes`로 삽입/삭제·변경 전후본 분리. 평문 추출 기본값은 깨끗한 최종본(`extract_text(..., revisions='final')`); 옛 `merge` 동작은 삽입+삭제가 겹쳐 번호가 깨져 보임. COM 변환이 종료마커를 누락하면(`orphans>0`) `accepted_text`(한컴 최종본)를 `final_text=`로 주입해 보정.
 - 한글 버전 차이로 문제가 생기면 **시드 재생성**이 1차 해결책.
 - 자세한 원리·함정은 `GUIDE.md` 참고.

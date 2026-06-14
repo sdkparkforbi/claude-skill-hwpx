@@ -1,5 +1,5 @@
 ---
-title: HWPX 자동 생성 가이드 (v6)
+title: HWPX 자동 생성 가이드 (v7)
 tags:
   - hwpx
   - automation
@@ -7,7 +7,7 @@ tags:
   - hancom
 ---
 
-# HWPX 코드 생성 — 핵심 교훈 & 실전 가이드 (v6)
+# HWPX 코드 생성 — 핵심 교훈 & 실전 가이드 (v7)
 
 > **무엇인가** · 파이썬으로 한글 문서(`.hwpx`)를 **프로그래밍 방식으로 생성**하는 범용 가이드.
 > 표·셀병합·색상·글자모양·가로/세로 페이지까지 코드로 찍어낸다.
@@ -468,5 +468,47 @@ class HwpxDoc:
 
 ---
 
-> 본 문서는 2026-06 실전(경영학 시간표·회의록 HWPX 자동 생성) 경험을 일반화한 것임.
+## 14. ⚠️ 교정추적(변경 내용) 읽기 — 삽입/삭제 분리
+
+심사·검토용 .hwp는 **변경 내용 추적(track changes)** 이 켜진 채 온다. 이걸 모르고 평문만 뽑으면
+삽입·삭제 텍스트가 **한 흐름으로 섞여** 나온다(예: 참고문헌 재번호 중 옛 `[7]`이 지워지고 새 `[34]`가
+들어가면 `"[347]"`로 보임 — 원고 오류가 아니라 추적 흔적).
+
+### 14-1. HWPX의 저장 구조
+- `header.xml` : `<hh:trackChange type="Insert|Delete|CharShape|ParaShape" date=.. authorID=.. id=../>`,
+  작성자 `<hh:trackChangeAuthor name=.. id=../>`. (`id`가 본문 마커의 `TcId`)
+- `section*.xml` : 본문 인라인 마커 `<hp:insertBegin Id=.. TcId=../>…<hp:insertEnd …/>`,
+  `<hp:deleteBegin …/>…<hp:deleteEnd …/>`. **Begin~End 사이의 `hp:t`** 가 그 구간의 삽입/삭제 텍스트.
+
+### 14-2. 함정 — COM 변환이 종료마커를 누락
+`hwp→hwpx`(한컴 COM) 변환이 **종료 마커를 1개씩 빠뜨리는** 사례가 실측됨
+(`insertBegin` 135 / `insertEnd` 134, `deleteBegin` 57 / `deleteEnd` 56). 종료 없는 구간(**orphan**)을
+그대로 두면 그 뒤 본문 전체가 삭제로 오분류되어 **"5-2~참고문헌이 통째로 사라짐"** 같은 파국이 난다.
+- `read_changes`는 정상적으로 닫힌 구간만 신뢰하고, orphan은 기본적으로 **문단 끝에서 강제 종료(cap)** 해
+  피해를 1문단으로 한정하며 `orphans` 개수를 보고한다.
+- **권위 있는 보정**: 한컴 `GetTextFile('TEXT')` 은 보기 모드와 무관하게 **늘 '변경 적용된 최종본'** 을
+  돌려준다(삭제는 빠지고 삽입은 포함). 자동화의 변경 **수락/거부 액션(RevisionApplyAll 등)은 no-op**.
+  → `hwpx_convert.accepted_text(path)`로 최종본 평문을 얻어 `read_changes(path, final_text=...)`에
+  주입하면, 최종본에 남은 텍스트의 **거짓 삭제를 걷어내고** orphan 삽입 구간까지 복원한다.
+  (편집 전 '원본/거부본'은 한컴으로 못 만들므로 `read_changes(...)['original']`로만 얻는다.)
+
+### 14-3. 사용
+```python
+import hwpx_read, hwpx_convert
+# .hwp면 먼저 변환
+hwpx_convert.hwp_to_hwpx("심사본.hwp", "심사본.hwpx")
+# (1) 깨끗한 최종 본문만:
+clean = hwpx_read.extract_text("심사본.hwpx")            # revisions='final'(기본)
+# (2) 무엇이 바뀌었나:
+ft = hwpx_convert.accepted_text("심사본.hwp")            # 권위 최종본(오라클)
+ch = hwpx_read.read_changes("심사본.hwpx", final_text=ft)
+for c in ch["changes"]:
+    print(c["type"], "p%s" % c["para"], c["author"], c["text"][:80])
+assert ch["final"] == ft                                 # 검증
+```
+CLI: `python hwpx_read.py 심사본.hwpx --changes`
+
+---
+
+> 본 문서는 2026-06 실전(경영학 시간표·회의록 HWPX 자동 생성, 심사용 논문 교정추적 분석) 경험을 일반화한 것임.
 > 재사용 스킬(`hwpx`)로도 패키징되어 있어 "hwpx로 출력" 요청 시 자동 활용 가능.
