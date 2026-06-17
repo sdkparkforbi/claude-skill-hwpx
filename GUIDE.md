@@ -510,5 +510,44 @@ CLI: `python hwpx_read.py 심사본.hwpx --changes`
 
 ---
 
-> 본 문서는 2026-06 실전(경영학 시간표·회의록 HWPX 자동 생성, 심사용 논문 교정추적 분석) 경험을 일반화한 것임.
+## 15. 관공서 양식(.hwp) 채우기 — v8 실전 함정
+
+받은 **공공기관 신청서/수요조사서 양식**을 `hwp_to_hwpx`로 올린 뒤 셀을 채울 때
+두 가지 비자명한 함정이 있다(2026-06 RISE 지산학협력 수요조사서 작성 실전).
+
+### 15-1. '빈' 셀에는 `<hp:t>`가 아예 없다
+양식의 입력 칸은 비어 보여도 `<hp:run charPrIDRef="3">`까지는 존재하지만 그 안에
+**텍스트 노드 `<hp:t>`가 없다**. 옛 `set_cell`은 `_own_ts(p)`가 `[]`이면 조용히
+아무것도 안 써서 **글자가 안 들어간다**(에러도 안 남 → 더 위험).
+→ v8에서 `set_cell`이 t가 없으면 **`<hp:t>`를 생성**하도록 수정. run조차 없으면
+   `_default_charpr()`(문서 최다 사용 charPr)로 run까지 만든다.
+
+진단 팁: 채운 뒤 반드시 `hwpx_read.iter_tables()`로 되읽어 값이 실제로 들어갔는지 확인.
+
+### 15-2. 체크박스는 Wingdings 글리프다
+한글 양식의 ☐/☑는 별도 컨트롤이 아니라 **라벨과 같은 run 텍스트 안의 글자**다.
+- `` = 빈 칸(☐), `` = 체크(☑) — Wingdings 사상 코드(charPr는 보통 일반 폰트값)
+- 예: `" AI, DX"` 한 run에 글리프+공백+라벨이 함께 들어있음.
+- 토글 = 글리프 치환. `check_option(tbl, row, col, checked=True)`가
+  해당 셀에서 ``↔``를 바꿔준다.
+- 선택지가 양식에 없을 땐(예: '공동연구형'이 칸에 없음) 기존 항목을 빈칸으로 돌리고
+  `set_cell`로 `" 기술이전형     공동연구형"`처럼 직접 써넣는다.
+
+### 15-3. 셀 주소(cellAddr)는 병합 반영 좌표다
+`set_cell`/`check_option`의 `row,col`은 **시각적 격자가 아니라 `<hp:cellAddr>`의
+colAddr/rowAddr**다. 병합(`cellSpan`)이 있으면 인덱스를 건너뛴다. 먼저 표를 덤프해
+각 `tc`의 `cellAddr`(col,row)·`cellSpan`을 출력해 매핑한 뒤 채울 것.
+
+```python
+import hwpx_edit
+ed = hwpx_edit.HwpxEditor("양식.hwpx")
+ed.set_cell(0, row=1, col=1, text="AI·DX 기반 한우 수요예측 시스템 개발")  # 빈 칸도 채움
+ed.check_option(0, row=2, col=6, checked=True)     # 분야: AI,DX 체크
+ed.save("작성본.hwpx")   # → python hwpx_bake.py 작성본.hwpx (레이아웃 재계산 필수)
+```
+
+---
+
+> 본 문서는 2026-06 실전(경영학 시간표·회의록 HWPX 자동 생성, 심사용 논문 교정추적 분석,
+> RISE 지산학협력 수요조사서 양식 자동 작성) 경험을 일반화한 것임.
 > 재사용 스킬(`hwpx`)로도 패키징되어 있어 "hwpx로 출력" 요청 시 자동 활용 가능.

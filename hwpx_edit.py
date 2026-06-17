@@ -141,16 +141,58 @@ class HwpxEditor:
         ps = sub.findall(_HP + 'p') if sub is not None else []
         if not ps:
             raise ValueError('셀에 단락이 없습니다')
-        # 첫 단락 첫 run에 text, 나머지 run/단락은 비움(셀을 단일 값으로)
+        # 첫 단락 첫 run에 text, 나머지 run/단락은 비움(셀을 단일 값으로).
+        # 함정(v8): 양식의 '빈' 셀은 <hp:run>은 있어도 <hp:t>가 없는 경우가 많다.
+        # 이때 _own_ts(p)는 []라 그냥 두면 글자가 안 들어간다 → t를 생성해 넣는다.
         first_ts = self._own_ts(ps[0])
         if first_ts:
             first_ts[0].text = text
             for extra in first_ts[1:]:
                 extra.text = ''
+        else:
+            runs = ps[0].findall(_HP + 'run')        # 단락의 직속 run만
+            if not runs:                              # run조차 없으면 생성
+                run = etree.SubElement(ps[0], _HP + 'run')
+                run.set('charPrIDRef', self._default_charpr())
+                runs = [run]
+            t = etree.SubElement(runs[0], _HP + 't')  # 빈 run에 t 신설
+            t.text = text
         for p in ps[1:]:
             for t in self._own_ts(p):
                 t.text = ''
         return True
+
+    def _default_charpr(self):
+        """문서에서 흔히 쓰인 charPrIDRef를 추정(없으면 '0')."""
+        from collections import Counter
+        c = Counter()
+        for name in self._sec_names:
+            for r in self._sections[name].iter(_HP + 'run'):
+                ref = r.get('charPrIDRef')
+                if ref is not None:
+                    c[ref] += 1
+        return c.most_common(1)[0][0] if c else '0'
+
+    def check_option(self, table_index, row, col, *, checked=True,
+                     box_empty='', box_checked=''):
+        """양식 체크박스 토글. 한글 양식은 Wingdings 글리프
+        (빈 칸)·(체크)를 라벨과 같은 run 안에 둔다.
+        해당 셀에서 빈칸↔체크 글리프를 서로 바꿔 표시한다."""
+        tbls = self._tables()
+        tbl = tbls[table_index]
+        old, new = (box_empty, box_checked) if checked else (box_checked, box_empty)
+        n = 0
+        for tr in tbl.findall(_HP + 'tr'):
+            for tc in tr.findall(_HP + 'tc'):
+                ca = tc.find(_HP + 'cellAddr')
+                if ca is None or ca.get('colAddr') != str(col) \
+                        or ca.get('rowAddr') != str(row):
+                    continue
+                for t in tc.iter(_HP + 't'):
+                    if t.text and old in t.text:
+                        t.text = t.text.replace(old, new)
+                        n += 1
+        return n
 
     # ── 표 행 추가 ──
     def append_table_row(self, table_index, cells):

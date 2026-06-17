@@ -14,7 +14,7 @@ description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성·읽기·�
 ## 번들 파일
 - `hwpxgen.py` — **생성** 엔진(단락/표/병합/색/이미지/머리말·꼬리말/쪽번호/페이지). **import해서 쓴다.**
 - `hwpx_read.py` — **읽기** 엔진. .hwp(OLE 레코드)·.hwpx(zip+lxml)에서 본문·표 추출(한컴 불필요). **교정추적 분리**(`read_changes`)도 지원.
-- `hwpx_edit.py` — **편집** 엔진. 기존 hwpx의 플레이스홀더 치환(find/replace)·표 행 추가.
+- `hwpx_edit.py` — **편집** 엔진. 기존 hwpx의 플레이스홀더 치환(find/replace)·셀 직접 채우기(`set_cell`, 빈 칸 포함)·체크박스 토글(`check_option`)·표 행 추가.
 - `hwpx_convert.py` — **변환** 엔진. hwp→hwpx·→pdf(한컴 COM), →docx(python-docx)·→md/txt(순수 파이썬).
 - `hwpx_bake.py` — 생성/편집한 hwpx를 한글로 열고 다시 저장(레이아웃 재계산) + 검증 PDF.
 - `make_seed.py` — 기준 시드(_seed.hwpx)를 새로 만들 때(다른 PC/한글 버전).
@@ -39,7 +39,8 @@ ch = hwpx_read.read_changes("수정본.hwpx", final_text=ft)
 # 편집 — 양식 플레이스홀더 채우기 + 셀 교체 + 표 행 추가
 ed = hwpx_edit.HwpxEditor("양식.hwpx")
 ed.replace_map({"{{과제명}}":"AI 인재양성", "{{금액}}":"5,000,000"})
-ed.set_cell(0, row=1, col=1, text="5,000,000")     # 표0의 (col=1,row=1) 셀만 교체
+ed.set_cell(0, row=1, col=1, text="5,000,000")     # 표0의 (col=1,row=1) 셀만 교체 (빈 칸도 채워짐)
+ed.check_option(0, row=2, col=6, checked=True)     # 양식 체크박스 토글(/ 글리프)
 ed.append_table_row(0, ["운영비","750,000"])
 ed.save("작성본.hwpx")                              # 이후 python hwpx_bake.py 권장
 # 변환
