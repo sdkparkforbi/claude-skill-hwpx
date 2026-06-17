@@ -160,6 +160,14 @@ class HwpxEditor:
         for p in ps[1:]:
             for t in self._own_ts(p):
                 t.text = ''
+        # 함정(v8): 텍스트가 길어져 여러 줄로 wrap되어도, 원래 '빈 칸'이 갖고 있던
+        # lineseg 1개가 남아 있으면 한글이 그 1줄에 모든 줄을 겹쳐 그린다(줄간격 붕괴).
+        # linesegarray를 비워두면 baking 시 한글이 줄 수를 다시 계산한다.
+        for p in ps:
+            lsa = p.find(_HP + 'linesegarray')
+            if lsa is not None:
+                for seg in lsa.findall(_HP + 'lineseg'):
+                    lsa.remove(seg)
         return True
 
     def _default_charpr(self):

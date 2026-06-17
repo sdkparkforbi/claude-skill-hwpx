@@ -538,6 +538,15 @@ CLI: `python hwpx_read.py 심사본.hwpx --changes`
 colAddr/rowAddr**다. 병합(`cellSpan`)이 있으면 인덱스를 건너뛴다. 먼저 표를 덤프해
 각 `tc`의 `cellAddr`(col,row)·`cellSpan`을 출력해 매핑한 뒤 채울 것.
 
+### 15-4. 긴 텍스트 줄간격 붕괴 — stale `linesegarray`
+'빈 칸'은 1줄짜리 `<hp:linesegarray>`(lineseg 1개)를 갖고 있다. 여기에 여러 줄로
+wrap될 긴 본문을 넣으면, 한글은 **남아있는 lineseg 1개에 모든 줄을 겹쳐 그려서**
+글자가 한 줄에 뭉개진다(=줄간격 붕괴). baking은 `linesegarray`가 **비어 있을 때만**
+줄 수를 다시 계산하므로, stale lineseg가 남아 있으면 재계산하지 않는다.
+→ v8 `set_cell`은 텍스트 교체 시 해당 단락들의 `<hp:lineseg>`를 모두 제거한다.
+   이후 `hwpx_bake.py`가 올바른 줄 수를 다시 계산한다(baking 필수).
+   (직접 XML을 만질 때도 긴 셀은 lineseg를 비우고 bake할 것.)
+
 ```python
 import hwpx_edit
 ed = hwpx_edit.HwpxEditor("양식.hwpx")
