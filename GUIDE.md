@@ -533,6 +533,19 @@ CLI: `python hwpx_read.py 심사본.hwpx --changes`
 - 선택지가 양식에 없을 땐(예: '공동연구형'이 칸에 없음) 기존 항목을 빈칸으로 돌리고
   `set_cell`로 `" 기술이전형     공동연구형"`처럼 직접 써넣는다.
 
+> ⚠️ **함정(실전 추가): 한컴 baking이 Wingdings 글리프를 지운다.**
+> `check_option`으로 글리프를 토글한 뒤 `hwpx_bake.py`를 돌리면 **일부 셀에서
+> 글리프가 통째로 사라진다**(같은 문서에서 어떤 셀은 살고 어떤 셀은 죽는 비결정적 동작 관측).
+> private-use(U+F0xx) 문자라 한글이 재저장 시 폰트 사상에 따라 떨어뜨리는 것으로 보인다.
+> → **가장 견고한 방법: 유니코드 박스 `☐`(U+2610)·`☑`(U+2611)를 `set_cell`로 셀 전체에
+>    다시 써넣기.** 일반 폰트 문자라 baking·`to_docx`·HTML/PDF 변환에서 모두 안전하다.
+> ```python
+> ed.set_cell(0, row=2, col=6, text="☑ AI, DX")             # 분야 체크
+> ed.set_cell(0, row=3, col=1, text="☐ 기술이전형   ☑ 공동연구형")
+> ```
+> `check_option`(글리프 토글)은 **baking 안 하는** 경우엔 원본 스타일을 보존하므로 유효하지만,
+> baking이 필요하면 유니코드 `set_cell` 방식을 쓸 것.
+
 ### 15-3. 셀 주소(cellAddr)는 병합 반영 좌표다
 `set_cell`/`check_option`의 `row,col`은 **시각적 격자가 아니라 `<hp:cellAddr>`의
 colAddr/rowAddr**다. 병합(`cellSpan`)이 있으면 인덱스를 건너뛴다. 먼저 표를 덤프해
