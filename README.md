@@ -65,6 +65,8 @@ hwpx/
 ├─ SKILL.md        ← 스킬 정의(트리거 설명) — Claude가 읽음
 ├─ README.md       ← (이 파일) 설치·공유 가이드
 ├─ GUIDE.md        ← HWPX 생성 상세 가이드(원리·함정)
+├─ LESSONS.md      ← 안 열리는 .hwpx 진단·복구 실전 교훈
+
 ├─ hwpxgen.py      ← 생성 엔진 (표·병합·색·이미지·머리말/꼬리말·쪽번호·가로/세로)
 ├─ hwpx_read.py    ← 읽기 엔진 (.hwp/.hwpx → 본문·표 추출 + 손상 검사 check_refs/check_tables, 한컴 불필요)
 ├─ hwpx_edit.py    ← 편집 엔진 (양식 치환·셀 채우기·표 꾸미기 + 복구 repair: 참조·표격자 손상 자동수정)
