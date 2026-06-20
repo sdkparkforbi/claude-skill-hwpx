@@ -66,8 +66,8 @@ hwpx/
 ├─ README.md       ← (이 파일) 설치·공유 가이드
 ├─ GUIDE.md        ← HWPX 생성 상세 가이드(원리·함정)
 ├─ hwpxgen.py      ← 생성 엔진 (표·병합·색·이미지·머리말/꼬리말·쪽번호·가로/세로)
-├─ hwpx_read.py    ← 읽기 엔진 (.hwp/.hwpx → 본문·표 추출, 한컴 불필요)
-├─ hwpx_edit.py    ← 편집 엔진 (양식 hwpx 플레이스홀더 치환·표 행 추가)
+├─ hwpx_read.py    ← 읽기 엔진 (.hwp/.hwpx → 본문·표 추출 + 손상 검사 check_refs/check_tables, 한컴 불필요)
+├─ hwpx_edit.py    ← 편집 엔진 (양식 치환·셀 채우기·표 꾸미기 + 복구 repair: 참조·표격자 손상 자동수정)
 ├─ hwpx_convert.py ← 변환 엔진 (hwp→hwpx·→pdf/docx/md/txt)
 ├─ hwpx_bake.py    ← 한글로 열고 다시 저장(레이아웃 baking) + 검증 PDF
 ├─ make_seed.py    ← 기준 시드(_seed.hwpx) 재생성
@@ -83,6 +83,7 @@ hwpx/
 | 편집(치환·행추가) | `hwpx_edit.py` (+baking 권장) | ❌ (baking만 ✅) |
 | 변환 hwp→hwpx, →pdf | `hwpx_convert.py` | ✅ |
 | 변환 →docx, →md, →txt | `hwpx_convert.py` | ❌ |
+| 복구(안 열리는 hwpx: 참조 무결성·표 격자) | `hwpx_read.check_refs`/`check_tables` 진단 / `hwpx_edit.repair` 수정 | ❌ |
 
 ## 한계 / 주의
 - **생성·baking·hwp→hwpx·→pdf는 Windows + 한컴오피스 전용** (COM 자동화). 읽기·편집·→docx/md/txt는 한컴 없이 동작.

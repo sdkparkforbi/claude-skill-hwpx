@@ -20,11 +20,16 @@ HWP / HWPX 읽기·추출 엔진.
   read_changes(path)            -> dict           교정추적 분리: {has_changes,changes,
                                                  original,final,authors,orphans,...} (.hwpx 전용)
   iter_tables(doc)              -> list[list[list[str]]]   표만 골라 행렬로
+  check_refs(path)              -> dict           참조 무결성(없는 스타일/속성 ID 참조)
+                                                 검사. {} 면 정상. 복구는 hwpx_edit.repair()
+  check_tables(path)            -> list[str]      표 격자 손상(cellAddr 누락·ragged 격자)
+                                                 검사. [] 면 정상. 복구는 hwpx_edit.repair()
+  validate(path, pre_bake=True) -> (ok, errors)   손상 사전검사(구조+참조+표격자 무결성 포함)
 
 CLI
   python hwpx_read.py 파일.hwp [파일2.hwpx ...] [--json] [-o out.txt]
   python hwpx_read.py 파일.hwpx --changes      # 삽입/삭제 변경 목록
-  python hwpx_read.py 파일.hwpx --validate     # baking 전 손상 검사
+  python hwpx_read.py 파일.hwpx --validate     # baking 전 손상 검사(참조 무결성 포함)
 """
 import sys, os, io, re, zlib, struct, json, zipfile
 
@@ -353,6 +358,73 @@ def iter_tables(doc):
     """read_hwpx 결과에서 표만 행렬 리스트로 추출."""
     return [b['rows'] for b in doc.get('blocks', []) if b.get('type') == 'table']
 
+# ──────────────────── 참조 무결성 (dangling IDRef) ────────────────────
+# 본문 참조 attr → 머리부(header) 항목 태그(hh:)
+_REF_TO_ELEM = {'charPrIDRef': 'charPr', 'paraPrIDRef': 'paraPr',
+                'styleIDRef': 'style', 'borderFillIDRef': 'borderFill'}
+
+def check_refs(path):
+    """본문(section)이 참조하는 스타일/속성 ID가 머리부(header)에 모두 정의돼
+    있는지 검사한다. 외부/병합 hwpx가 'XML·표는 정상인데 한글이 열기를 거부'하는
+    대표 원인 — dangling IDRef(예: section의 paraPrIDRef="21"인데 header엔 0~20만
+    존재) — 를 잡는다(validate가 못 보던 층).
+    반환: {refattr: {'defined_max':int|-1, 'missing':sorted[int]}} — 누락이 있는
+    항목만(정상이면 빈 dict). 복구는 hwpx_edit.repair()."""
+    with zipfile.ZipFile(path) as z:
+        names = z.namelist()
+        header = (z.read('Contents/header.xml').decode('utf-8', 'replace')
+                  if 'Contents/header.xml' in names else '')
+        sect = '\n'.join(z.read(n).decode('utf-8', 'replace') for n in names
+                         if re.match(r'Contents/section\d+\.xml$', n))
+    report = {}
+    for attr, elem in _REF_TO_ELEM.items():
+        defined = set(int(m) for m in
+                      re.findall(r'<hh:%s\b[^>]*?\bid="(\d+)"' % elem, header))
+        used = set(int(m) for m in re.findall(r'\b%s="(\d+)"' % attr, sect))
+        missing = sorted(used - defined)
+        if missing:
+            report[attr] = {'defined_max': (max(defined) if defined else -1),
+                            'missing': missing}
+    return report
+
+# ──────────────────── 표 격자 손상 (한글 열기 무한루프) ────────────────────
+def check_tables(path):
+    """표 격자 손상을 검사한다. 외부/병합 hwpx에서 흔하며, 한글이 열 때 표 레이아웃을
+    무한 반복(파일이 '안 열림')하게 만든다. 잡는 항목:
+      · 셀 <hp:cellAddr>(행·열 좌표) 누락        ← 가장 치명적
+      · 행마다 열 너비가 다른 ragged 격자(병합 아님)
+      · 표 sz.height 가 행 높이 합과 불일치
+    반환: list[str] 문제 설명(정상이면 []). 복구는 hwpx_edit.repair()."""
+    from lxml import etree
+    from collections import Counter
+    probs = []
+    def simple_w(tr):
+        ws = []
+        for tc in tr.findall(_HP+'tc'):
+            sp = tc.find(_HP+'cellSpan'); cs = tc.find(_HP+'cellSz')
+            if cs is None:
+                return None
+            if sp is not None and sp.get('colSpan') and int(sp.get('colSpan')) != 1:
+                return None
+            ws.append(int(cs.get('width')))
+        return tuple(ws)
+    with zipfile.ZipFile(path) as z:
+        names = sorted((n for n in z.namelist()
+                        if re.match(r'Contents/section\d+\.xml$', n)),
+                       key=lambda n: int(re.search(r'(\d+)', n).group(1)))
+        for nm in names:
+            root = etree.fromstring(z.read(nm))
+            for ti, tbl in enumerate(root.iter(_HP+'tbl')):
+                trs = tbl.findall(_HP+'tr')
+                miss = sum(1 for tr in trs for tc in tr.findall(_HP+'tc')
+                           if tc.find(_HP+'cellAddr') is None)
+                if miss:
+                    probs.append('표#%d: 셀 cellAddr 누락 %d개(한글 열기 무한루프)' % (ti, miss))
+                pats = Counter(s for s in (simple_w(tr) for tr in trs) if s)
+                if len(pats) > 1:
+                    probs.append('표#%d: 행별 열너비 불일치(ragged 격자, %d패턴)' % (ti, len(pats)))
+    return probs
+
 # ───────────────────────── 사전 검증 ─────────────────────────
 def validate(path, pre_bake=True):
     """한컴으로 열기 전, .hwpx의 알려진 손상 신호를 정적 검사한다.
@@ -362,6 +434,10 @@ def validate(path, pre_bake=True):
       · 표 id 중복(객체 식별 실패)
       · 한 표 안에 cellAddr (0,0)이 둘 이상(셀 주소 미설정)
       · 첫 행의 셀너비 합 ≠ 표 너비(구조 불일치)
+      · 참조 무결성: 본문이 머리부에 없는 paraPr/charPr/style/borderFill ID를
+        참조(dangling IDRef) → 한글이 통째로 열기 거부. 복구는 hwpx_edit.repair().
+      · 표 격자 손상: 셀 cellAddr(행·열 좌표) 누락·행별 열너비 불일치(ragged) →
+        한글이 열 때 표 레이아웃 무한 루프(파일이 안 열림). 복구는 hwpx_edit.repair().
 
     생성단계 규칙(pre_bake=True일 때만) — '아직 baking 안 한 raw 생성물'에만 해당:
       · 비어있지 않은 linesegarray(빈 태그여야 baking 시 자동 계산 → 안 그러면 글자 겹침)
@@ -418,6 +494,13 @@ def validate(path, pre_bake=True):
         errors.append('linesegarray에 내용 있음: %d개(raw 생성물은 빈 태그여야 함; baking된 파일이면 pre_bake=False)' % bad_lsa)
     if pre_bake and bad_tac:
         errors.append('treatAsChar="0" 표: %d개(이 스킬 생성물은 인라인; 외부 floating 표면 pre_bake=False)' % bad_tac)
+    # 참조 무결성(항상 검사): 본문이 머리부에 없는 스타일/속성 ID를 참조하면 한글이 열기를 거부
+    for attr, info in check_refs(path).items():
+        errors.append('참조 무결성: %s가 머리부에 없는 id %s 참조(정의된 최대 id=%d) → hwpx_edit.repair로 복구'
+                      % (attr, info['missing'], info['defined_max']))
+    # 표 격자 손상(항상 검사): cellAddr 누락·ragged 격자 → 한글 열기 무한루프
+    for p in check_tables(path):
+        errors.append('%s → hwpx_edit.repair로 복구' % p)
     return (len(errors) == 0, errors)
 
 # ───────────────────────── CLI ─────────────────────────

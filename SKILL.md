@@ -1,6 +1,6 @@
 ---
 name: hwpx
-description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성·읽기·편집·변환한다. 생성은 표·셀병합·배경색·글자모양·이미지·머리말/꼬리말·쪽번호·가로/세로 페이지 지원. 읽기는 기존 .hwp/.hwpx에서 본문·표 추출(한컴 없이)과 교정추적(변경 내용) 삽입/삭제 분리·변경 전후본 추출. 편집은 양식 hwpx의 플레이스홀더 치환·표 행 추가. 변환은 hwp→hwpx, →pdf/docx/md. 사용자가 "hwpx로 출력/저장/변환/만들어", "한글 파일/문서로 만들어", "hwp 내용 읽어/추출", "변경 내용/교정추적/뭐가 고쳐졌는지 봐줘", "hwp를 hwpx로 변환", "양식에 내용 채워줘", "시간표/회의록/표를 hwpx로" 등을 요청할 때 트리거. (Windows + 한컴오피스 설치 필요; 읽기/편집/일부 변환은 한컴 없이 동작)
+description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성·읽기·편집·변환·복구한다. 생성은 표·셀병합·배경색·글자모양·이미지·머리말/꼬리말·쪽번호·가로/세로 페이지 지원. 읽기는 기존 .hwp/.hwpx에서 본문·표 추출(한컴 없이)과 교정추적(변경 내용) 삽입/삭제 분리·변경 전후본 추출. 편집은 양식 hwpx의 플레이스홀더 치환·표 행 추가. 변환은 hwp→hwpx, →pdf/docx/md. 복구는 한글이 "열 수 없는 문서"로 거부하거나 열 때 무한 루프하는 hwpx를 검사·자동수정(참조 무결성=없는 스타일/속성 ID 참조, 표 격자 손상=셀 cellAddr 누락·행별 열너비 불일치). 사용자가 "hwpx로 출력/저장/변환/만들어", "한글 파일/문서로 만들어", "hwp 내용 읽어/추출", "변경 내용/교정추적/뭐가 고쳐졌는지 봐줘", "hwp를 hwpx로 변환", "양식에 내용 채워줘", "시간표/회의록/표를 hwpx로", "hwpx가 안 열려/손상됐어 고쳐줘" 등을 요청할 때 트리거. (Windows + 한컴오피스 설치 필요; 읽기/편집/복구/일부 변환은 한컴 없이 동작)
 ---
 
 # HWPX 생성·읽기·편집·변환 스킬
@@ -13,8 +13,8 @@ description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성·읽기·�
 
 ## 번들 파일
 - `hwpxgen.py` — **생성** 엔진(단락/표/병합/색/이미지/머리말·꼬리말/쪽번호/페이지). **import해서 쓴다.**
-- `hwpx_read.py` — **읽기** 엔진. .hwp(OLE 레코드)·.hwpx(zip+lxml)에서 본문·표 추출(한컴 불필요). **교정추적 분리**(`read_changes`)도 지원.
-- `hwpx_edit.py` — **편집** 엔진. 기존 hwpx의 플레이스홀더 치환(find/replace)·셀 직접 채우기(`set_cell`, 빈 칸 포함)·체크박스 토글(`check_option`)·표 행 추가.
+- `hwpx_read.py` — **읽기** 엔진. .hwp(OLE 레코드)·.hwpx(zip+lxml)에서 본문·표 추출(한컴 불필요). **교정추적 분리**(`read_changes`)·**손상 검사**(`check_refs` 참조 무결성·`check_tables` 표 격자; 둘 다 `validate`에 포함)도 지원.
+- `hwpx_edit.py` — **편집** 엔진. 기존 hwpx의 플레이스홀더 치환(find/replace)·셀 직접 채우기(`set_cell`, 빈 칸 포함)·체크박스 토글(`check_option`)·표 행 추가·표 꾸미기(`set_cell_margin`/`set_table_float`/`stretch_table`/`set_cell_valign`)·**복구**(`repair`: 안 열리는 hwpx의 참조 무결성 + 표 격자 손상=셀 cellAddr 누락·ragged 열너비·표 높이 자동수정). 한컴 불필요.
 - `hwpx_convert.py` — **변환** 엔진. hwp→hwpx·→pdf(한컴 COM), →docx(python-docx)·→md/txt(순수 파이썬).
 - `hwpx_bake.py` — 생성/편집한 hwpx를 한글로 열고 다시 저장(레이아웃 재계산) + 검증 PDF.
 - `make_seed.py` — 기준 시드(_seed.hwpx)를 새로 만들 때(다른 PC/한글 버전).
@@ -30,6 +30,11 @@ doc  = hwpx_read.read_hwpx("양식.hwpx")             # {'blocks':[para|table], 
 tables = hwpx_read.iter_tables(doc)                 # [[ [행][열] ]]
 ok, errs = hwpx_read.validate("작성본.hwpx")        # 한컴 없이 손상 사전검사(raw 생성물)
 ok, errs = hwpx_read.validate("baked.hwpx", pre_bake=False)  # baking된/외부 파일은 구조검사만
+# 복구 — 한글이 "열 수 없는 문서"로 거부/무한루프할 때. 진단은 read, 수정은 edit.
+bad = hwpx_read.check_refs("안열리는.hwpx")          # 참조 무결성: {} 면 정상 (validate에도 포함)
+tbl = hwpx_read.check_tables("안열리는.hwpx")        # 표 격자: [] 면 정상 (cellAddr 누락·ragged 검사)
+rep = hwpx_edit.repair("안열리는.hwpx")              # 참조 + 표 격자 함께 복구 → 원본 .bak 백업 후 덮어씀
+# 복구 후 baking 권장: python hwpx_bake.py 안열리는.hwpx
 # 교정추적(변경 내용) — "뭐가 고쳐졌는지" 보기. .hwp는 먼저 hwpx로 변환.
 clean = hwpx_read.extract_text("수정본.hwpx")        # 기본 revisions='final' → 깨끗한 최종본
 ch = hwpx_read.read_changes("수정본.hwpx")           # {changes:[삽입/삭제], original, final, orphans, authors}
@@ -101,6 +106,10 @@ hwpx_convert.to_markdown("RFP.hwp")                 # → .md   (순수 파이�
 - **가로 인쇄폭**: 한글 실제 가로폭 ≈67176 HWPUNIT(≈237mm). 표가 넓으면 오른쪽 열이 잘림 → 너비 실측·축소.
 - **재패키징**: 파이썬 `zipfile`만(쉘 zip 금지), 원본 `infolist()` 순서 유지.
 - **header.xml은 추가만**(itemCnt 갱신), 기존 항목 수정 금지.
+- **"열 수 없는 문서" 거부/열 때 멈춤 = 두 가지 손상이 흔하다**(외부/병합 hwpx는 XML·구조가 멀쩡해도 발생):
+  1. **참조 무결성** — 본문(section)이 머리부(header)에 **없는 paraPr/charPr/style/borderFill ID**를 참조 → 한글이 통째로 열기 거부.
+  2. **표 격자 손상** — 표 셀에 **`<hp:cellAddr>`(행·열 좌표)가 누락**되거나 행마다 열 너비가 다른 **ragged 격자** → 한글이 열 때 표 레이아웃을 **무한 반복**(CPU 100% 점유, 안 열림). ★실측: 다른 문서를 프로그램으로 병합한 표에서 cellAddr가 통째로 빠지는 사례.
+  → `hwpx_read.validate`(또는 `check_refs`/`check_tables`)로 점검, `hwpx_edit.repair`로 일괄 복구 후 `hwpx_bake.py`로 굳힌다. (이 환경에선 한글 COM `Open`이 무한루프/모달로 멈출 수 있으니, baking이 끝나지 않으면 `validate`가 통과하는지로 판단.)
 - **교정추적 평문 추출 주의**: `revisions='merge'`(옛 동작)·.hwp 바이너리 리더는 삽입+삭제를 한 흐름으로 이어붙여 번호가 겹쳐 보인다(예: 재번호 중 `[7]`→`[34]`가 `"[347]"`로). 깨끗한 본문은 `revisions='final'`(기본). "뭐가 바뀌었나"는 `read_changes`.
 - **COM 변환이 종료마커를 누락**시킬 수 있음(`insertBegin` n개 / `insertEnd` n-1개). `read_changes`의 `orphans>0`가 신호. 이땐 `hwpx_convert.accepted_text`(한컴 GetTextFile=최종본)를 `final_text=`로 주입해 보정. 한컴 GetTextFile은 보기모드와 무관하게 늘 최종본을 주고, 자동화의 변경수락/거부 액션은 no-op이라 '원본(거부)본'은 `read_changes(...)['original']`로만 얻는다.
 

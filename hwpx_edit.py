@@ -21,9 +21,19 @@ run 텍스트를 이어붙여 치환'하는 2-pass 전략을 쓴다.
   ed.append_table_row(table_index=0, cells=["항목","값",...])  # 표 끝에 행 추가
   ed.save("작성본.hwpx")
 
+복구 — 한글이 "열 수 없는 문서"로 거부하거나 열 때 무한 루프하는 hwpx 고치기(한컴 불필요)
+  import hwpx_edit
+  hwpx_edit.repair("안열리는.hwpx")                   # 참조 무결성 + 표 격자 손상을 함께 복구(+.bak)
+  #  ├ 참조: 없는 paraPr/charPr/style/borderFill ID → 머리부 정의 복제로 메움
+  #  └ 표 : 셀 cellAddr(행·열 좌표) 누락·행별 열너비 불일치(ragged)·표 높이 불일치 보정
+  # 직접 제어: ed.missing_refs()/ed.repair_refs() , ed.fix_table_grid() → ed.save()
+  # (사전 점검: hwpx_read.check_refs / hwpx_read.check_tables / hwpx_read.validate 가 함께 잡는다)
+  # ⚠ 복구 후 python hwpx_bake.py 로 한 번 열어 레이아웃을 굳히는 것을 권장
+
 CLI
   python hwpx_edit.py 양식.hwpx -o 결과.hwpx --set "{{이름}}=홍길동" --set "{{금액}}=500"
   python hwpx_edit.py 양식.hwpx --map 치환표.json -o 결과.hwpx
+  python hwpx_edit.py 안열리는.hwpx --repair          # 참조 무결성 복구(덮어쓰기+.bak)
 """
 import sys, os, re, json, zipfile, io
 from lxml import etree
@@ -331,20 +341,197 @@ class HwpxEditor:
                 sub.set('vertAlign', v)
         return True
 
+    # ── 복구: 참조 무결성(없는 스타일/속성 ID 참조) ──
+    # 본문 참조 attr → 머리부 항목 태그(hh:) / 그 항목이 담긴 목록 태그
+    _REF_ELEM = {'charPrIDRef': 'charPr', 'paraPrIDRef': 'paraPr',
+                 'styleIDRef': 'style', 'borderFillIDRef': 'borderFill'}
+    _ELEM_LIST = {'charPr': 'charProperties', 'paraPr': 'paraProperties',
+                  'style': 'styles', 'borderFill': 'borderFills'}
+
+    @staticmethod
+    def _find_def_block(header, elem, eid):
+        """머리부에서 <hh:elem id="eid" …>…</hh:elem>(또는 self-closing) 블록 문자열."""
+        m = re.search(r'<hh:%s\b[^>]*?\bid="%s"[^>]*/>' % (elem, eid), header)
+        if m:
+            return m.group(0)
+        m = re.search(r'<hh:%s\b[^>]*?\bid="%s".*?</hh:%s>' % (elem, eid, elem),
+                      header, re.S)
+        return m.group(0) if m else None
+
+    def missing_refs(self):
+        """본문(section)이 쓰는 paraPr/charPr/style/borderFill ID 중 머리부(header)에
+        정의가 없는 것을 찾는다. {elem: {'defined_max':int,'missing':[id…]}}(없으면 {})."""
+        header = self._raw['Contents/header.xml'].decode('utf-8', 'replace')
+        sect = '\n'.join(etree.tostring(self._sections[n], encoding='unicode')
+                         for n in self._sec_names)
+        report = {}
+        for attr, elem in self._REF_ELEM.items():
+            defined = set(int(m) for m in
+                          re.findall(r'<hh:%s\b[^>]*?\bid="(\d+)"' % elem, header))
+            used = set(int(m) for m in re.findall(r'\b%s="(\d+)"' % attr, sect))
+            miss = sorted(used - defined)
+            if miss:
+                report[elem] = {'defined_max': (max(defined) if defined else -1),
+                                'missing': miss}
+        return report
+
+    def repair_refs(self):
+        """한글이 '열 수 없는 문서'로 거부하는 dangling 참조를 고친다 — 본문이 쓰는
+        ID 중 머리부에 없는 것을, 머리부의 '같은 종류 최대 id 정의를 복제'해 채우고
+        해당 목록 itemCnt를 +1 한다. 추가한 {elem:[id…]} 반환(저장은 save())."""
+        header = self._raw['Contents/header.xml'].decode('utf-8')
+        added = {}
+        for elem, info in self.missing_refs().items():
+            defined = set(int(m) for m in
+                          re.findall(r'<hh:%s\b[^>]*?\bid="(\d+)"' % elem, header))
+            if not defined:
+                continue
+            src = max(defined)
+            block = self._find_def_block(header, elem, src)
+            if not block:
+                continue
+            clones = [block.replace('id="%s"' % src, 'id="%s"' % mid, 1)
+                      for mid in info['missing']]
+            pos = header.index(block) + len(block)
+            header = header[:pos] + ''.join(clones) + header[pos:]
+            lst = self._ELEM_LIST[elem]
+            header = re.sub(r'(<hh:%s\b[^>]*?\bitemCnt=")(\d+)(")' % lst,
+                            lambda mm: mm.group(1) + str(int(mm.group(2)) + len(clones)) + mm.group(3),
+                            header, count=1)
+            added[elem] = info['missing']
+        self._raw['Contents/header.xml'] = header.encode('utf-8')
+        return added
+
+    # ── 복구: 표 격자 손상(한글 열기 무한루프) ──
+    @staticmethod
+    def _row_simple_widths(tr):
+        """행이 모두 colSpan==1 단순행이면 (cellSz width 튜플), 아니면 None."""
+        ws = []
+        for tc in tr.findall(_HP + 'tc'):
+            sp = tc.find(_HP + 'cellSpan'); cs = tc.find(_HP + 'cellSz')
+            if cs is None:
+                return None
+            if sp is not None and sp.get('colSpan') and int(sp.get('colSpan')) != 1:
+                return None
+            ws.append(int(cs.get('width')))
+        return tuple(ws)
+
+    @staticmethod
+    def _row_height(tr):
+        """rowSpan==1 셀들의 cellSz height 최댓값 = 그 행 높이."""
+        cand = []
+        for tc in tr.findall(_HP + 'tc'):
+            cs = tc.find(_HP + 'cellSz'); sp = tc.find(_HP + 'cellSpan')
+            if cs is None:
+                continue
+            rs = int(sp.get('rowSpan')) if (sp is not None and sp.get('rowSpan')) else 1
+            if rs == 1:
+                cand.append(int(cs.get('height')))
+        return max(cand) if cand else 0
+
+    def fix_table_grid(self):
+        """한글이 '열 수 없는 문서'로 거부하거나 열 때 무한 레이아웃 루프에 빠지게 하는
+        표 격자 손상을 고친다(주로 외부 도구가 표를 병합·생성하며 망가뜨린 경우):
+          (1) 셀 <hp:cellAddr>(행·열 좌표) 누락 → colSpan/rowSpan 반영해 위치 계산·삽입  ★치명적
+          (2) 행마다 열 너비가 다른 ragged 격자 → 가장 흔한 패턴으로 cellSz width 통일
+          (3) 표 sz.height 가 행 높이 합과 불일치 → 합으로 보정
+        반환 {'celladdr':n, 'colgrid':[tbl idx…], 'height':[tbl idx…]}.  저장은 save()."""
+        from collections import Counter
+        rep = {'celladdr': 0, 'colgrid': [], 'height': []}
+        for ti, tbl in enumerate(self._tables()):
+            trs = tbl.findall(_HP + 'tr')
+            # (1) cellAddr 누락 보정 (+ 기존 것도 올바른 좌표로 정규화)
+            rowspan_left = {}
+            for ri, tr in enumerate(trs):
+                col = 0
+                for tc in tr.findall(_HP + 'tc'):
+                    while rowspan_left.get(col, 0) > 0:
+                        col += 1
+                    sp = tc.find(_HP + 'cellSpan')
+                    cspan = int(sp.get('colSpan')) if (sp is not None and sp.get('colSpan')) else 1
+                    rspan = int(sp.get('rowSpan')) if (sp is not None and sp.get('rowSpan')) else 1
+                    ca = tc.find(_HP + 'cellAddr')
+                    if ca is None:
+                        ca = etree.Element(_HP + 'cellAddr')
+                        sub = tc.find(_HP + 'subList')
+                        pos = list(tc).index(sub) + 1 if sub is not None else 0
+                        tc.insert(pos, ca)
+                        rep['celladdr'] += 1
+                    ca.set('colAddr', str(col)); ca.set('rowAddr', str(ri))
+                    if rspan > 1:
+                        for c in range(col, col + cspan):
+                            rowspan_left[c] = rspan
+                    col += cspan
+                for c in list(rowspan_left):
+                    if rowspan_left[c] > 0:
+                        rowspan_left[c] -= 1
+            # (2) ragged 열너비 → 최빈 패턴으로 통일
+            sw = [self._row_simple_widths(tr) for tr in trs]
+            pats = Counter(s for s in sw if s)
+            if len(pats) > 1:
+                modal, _ = pats.most_common(1)[0]
+                nc = len(modal); changed = 0
+                for tr, s in zip(trs, sw):
+                    if s and len(s) == nc and s != modal:
+                        for tc, w in zip(tr.findall(_HP + 'tc'), modal):
+                            tc.find(_HP + 'cellSz').set('width', str(w))
+                        changed += 1
+                if changed:
+                    rep['colgrid'].append(ti)
+            # (3) 표 높이 보정
+            sz = tbl.find(_HP + 'sz')
+            if sz is not None:
+                tot = sum(self._row_height(tr) for tr in trs)
+                if tot > 0 and tot != int(sz.get('height')):
+                    sz.set('height', str(tot)); rep['height'].append(ti)
+        return rep
+
     # ── 저장 ──
     def save(self, out_path):
+        # 메모리(_raw + 수정된 sections) 기준으로 재패키징. mimetype은 무압축·원래 순서 유지.
+        # (기존엔 비-섹션 파일을 디스크 원본에서 다시 읽어 header.xml 수정이 무시됐음 → _raw 사용으로 보완.)
         rendered = {name: etree.tostring(root, xml_declaration=True,
                                          encoding='UTF-8', standalone=True)
                     for name, root in self._sections.items()}
-        with zipfile.ZipFile(self.path) as zin, \
-             zipfile.ZipFile(out_path, 'w', zipfile.ZIP_DEFLATED) as zout:
-            for item in zin.infolist():
-                name = item.filename
+        with zipfile.ZipFile(out_path, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for name in self._order:
                 if name in rendered:
-                    zout.writestr(item, rendered[name])
+                    data = rendered[name]
+                elif name in self._raw:
+                    data = self._raw[name]
                 else:
-                    zout.writestr(item, zin.read(name))
+                    continue
+                if name == 'mimetype':
+                    zi = zipfile.ZipInfo('mimetype')
+                    zi.compress_type = zipfile.ZIP_STORED
+                    zout.writestr(zi, data)
+                else:
+                    zout.writestr(name, data)
         return out_path
+
+
+# ── 복구 편의 함수 ──
+def repair(path, out=None, backup=True):
+    """안 열리는 hwpx를 한컴 없이 고친다. 두 층의 손상을 함께 처리:
+      · 참조 무결성 — 본문이 머리부에 없는 paraPr/charPr/style/borderFill ID 참조(repair_refs)
+      · 표 격자 — 셀 cellAddr 누락·행별 열너비 불일치·표 높이 불일치(fix_table_grid)
+    둘 다 한글이 '열 수 없는 문서'로 거부하거나 열 때 무한 루프하게 만드는 대표 원인이다.
+      out   : 출력 경로(None이면 원본 덮어쓰기)
+      backup: 덮어쓸 때 원본을 '<원본>.bak.hwpx'로 1회 백업
+    반환 {'fixed':bool,'added':{elem:[id…]},'tables':{celladdr,colgrid,height},'out','backup'}."""
+    out = out or path
+    ed = HwpxEditor(path)
+    added = ed.repair_refs()
+    tables = ed.fix_table_grid()
+    fixed = bool(added) or bool(tables['celladdr'] or tables['colgrid'] or tables['height'])
+    bak = None
+    if fixed and backup and os.path.abspath(out) == os.path.abspath(path):
+        bak = os.path.splitext(path)[0] + '.bak.hwpx'
+        if not os.path.exists(bak):
+            import shutil
+            shutil.copy2(path, bak)
+    ed.save(out)
+    return {'fixed': fixed, 'added': added, 'tables': tables, 'out': out, 'backup': bak}
 
 
 # ── CLI ──
@@ -354,6 +541,7 @@ def _main(argv):
     src = argv[0]
     out = None
     mapping = {}
+    do_repair = '--repair' in argv
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -368,6 +556,27 @@ def _main(argv):
             i += 2
         else:
             i += 1
+    if do_repair:
+        rep = repair(src, out=out)   # out=None이면 덮어쓰기(+.bak 백업)
+        if rep['fixed']:
+            parts = []
+            if rep['added']:
+                parts.append('참조 ' + ', '.join('%s=%s' % (k, v) for k, v in rep['added'].items()))
+            t = rep['tables']
+            if t['celladdr']:
+                parts.append('cellAddr %d개' % t['celladdr'])
+            if t['colgrid']:
+                parts.append('열격자통일 표%s' % t['colgrid'])
+            if t['height']:
+                parts.append('표높이보정 표%s' % t['height'])
+            msg = '[FIXED] %s  (%s)' % (rep['out'], ' / '.join(parts))
+            if rep['backup']:
+                msg += '  (백업: %s)' % os.path.basename(rep['backup'])
+            msg += '  → baking 권장: python hwpx_bake.py "%s"' % rep['out']
+        else:
+            msg = '[OK] %s — 참조·표 격자 정상(복구 불필요)' % rep['out']
+        sys.stdout.buffer.write((msg + '\n').encode('utf-8'))
+        return 0
     if not out:
         out = os.path.splitext(src)[0] + '_edited.hwpx'
     ed = HwpxEditor(src)

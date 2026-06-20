@@ -461,6 +461,8 @@ class HwpxDoc:
 - [ ] borderFill `faceColor="#..."`, id·itemCnt 정확.
 - [ ] 표: `treatAsChar="1"`, `horzRelTo="COLUMN"`, 표 뒤 `<hp:t/>`, `rowCnt`/열너비합 일치.
 - [ ] 병합: 가려진 tc 생략, `cellAddr` 실제값, span 셀 width/height=합.
+- [ ] **참조 무결성**: 본문(section)이 쓰는 `paraPrIDRef/charPrIDRef/styleIDRef/borderFillIDRef`가 머리부(header) 정의 안에 모두 존재(`hwpx_read.check_refs`가 빈 dict).
+- [ ] **표 격자**: 모든 셀에 `<hp:cellAddr>` 존재, 행별 열너비 일관, sz.height=행높이 합(`hwpx_read.check_tables`가 빈 list). 깨졌으면 `hwpx_edit.repair`.
 - [ ] 모든 `linesegarray` 빈 태그 → **한글 baking(열고 다시 저장)** 으로 굳히기.
 - [ ] 페이지: width/height는 세로기준 고정, 방향은 `landscape`(WIDELY=세로/NARROWLY=가로).
 - [ ] 가로 인쇄폭 **실측**(≈67176)에 표 너비 맞추기.
@@ -567,6 +569,71 @@ ed.set_cell(0, row=1, col=1, text="AI·DX 기반 한우 수요예측 시스템 �
 ed.check_option(0, row=2, col=6, checked=True)     # 분야: AI,DX 체크
 ed.save("작성본.hwpx")   # → python hwpx_bake.py 작성본.hwpx (레이아웃 재계산 필수)
 ```
+
+---
+
+## 16. ⚠️ "열 수 없는 문서" / 열 때 멈춤 — 참조·표격자 손상 (check_refs · check_tables / repair)
+
+### 16-1. 증상과 원인
+외부 도구/스크립트로 **조립·병합**된 hwpx가 한글에서 *"파일을 열 수 없습니다 / 손상된 문서"* 로
+거부되는데, 막상 뜯어보면 **XML은 well-formed, 표 구조도 정상, mimetype도 정상**인 경우가 있다.
+범인은 대개 **참조 무결성** — 본문 `section*.xml`이 머리부 `header.xml`에 **정의되지 않은
+스타일/속성 ID**를 가리키는 것:
+
+```
+section0.xml : ... paraPrIDRef="21" ...      ← 21번 문단모양을 사용
+header.xml   : <hh:paraProperties itemCnt="21"> ... <hh:paraPr id="20"> </hh:paraProperties>
+               → 문단모양은 0~20번만 존재. 21번이 없음 → dangling 참조 → 한글이 열기 거부.
+```
+
+표 병합 시 다른 문서의 본문만 가져오고 그 문서가 쓰던 `paraPr/charPr/borderFill/style` 정의를
+머리부에 함께 옮기지 않으면 이렇게 된다. (이 검사는 `hwpx_read.validate()`에 통합되어 함께 잡힌다.)
+
+### 16-2. 검사·복구 (진단=hwpx_read, 수정=hwpx_edit)
+```python
+import hwpx_read, hwpx_edit
+hwpx_read.check_refs("안열리는.hwpx")
+#  → {} 면 정상. 깨졌으면 {'paraPrIDRef': {'defined_max':20, 'missing':[21]}}
+#    (hwpx_read.validate(...) 결과의 errors에도 '참조 무결성: …' 로 포함된다)
+hwpx_edit.repair("안열리는.hwpx")
+#  → 머리부에서 같은 종류의 '가장 큰 기존 ID 정의를 복제'해 누락 id로 추가하고 itemCnt를 +1.
+#    원본은 <원본>.bak.hwpx로 백업, mimetype 무압축으로 재패키징.
+#    반환 {'fixed':True,'added':{'paraPr':[21]},'out':...,'backup':...}
+#  세밀 제어: ed=hwpx_edit.HwpxEditor(p); ed.missing_refs(); ed.repair_refs(); ed.save(p)
+```
+CLI: `python hwpx_read.py 파일.hwpx --validate`(검사) / `python hwpx_edit.py 파일.hwpx --repair`(복구).
+
+복제 전략은 "없는 서식을 기존과 동일한 안전한 서식으로 채워 **일단 열리게** 만드는" 것이라,
+깨졌던 문단의 외형은 복제본을 따른다(원래 의도한 고유 서식이면 열린 뒤 한글에서 조정).
+
+### 16-3. 표 격자 손상 — 열 때 무한 레이아웃 루프 (★실측 파국)
+참조는 멀쩡한데 한글이 열다가 **CPU 100%로 멈추는**(파일 크기 변화 없이 수백 CPU초 소모) 경우.
+원인은 **표 격자가 깨진 것**이며, 외부 도구가 표를 병합·생성하며 만든다. 세 갈래:
+
+1. **셀 `<hp:cellAddr>`(행·열 좌표) 누락** ← 가장 치명적. HWPX에서 모든 `<hp:tc>`는
+   `<hp:cellAddr colAddr rowAddr/>`가 필수인데 통째로 빠지면 한글이 셀을 격자에 못 놓아 무한 루프.
+2. **ragged 열너비** — 행마다 열 너비가 달라(예: 6~8가지 패턴) 열 경계가 안 맞음(병합 아님).
+3. **표 `sz.height` 가 행 높이 합과 불일치**(예: 선언 100인데 실제 4920).
+
+```python
+import hwpx_read, hwpx_edit
+hwpx_read.check_tables("안열리는.hwpx")
+#  → [] 면 정상. 깨졌으면 ['표#4: 셀 cellAddr 누락 48개...', '표#4: 행별 열너비 불일치...']
+hwpx_edit.repair("안열리는.hwpx")          # 참조 + 표 격자(cellAddr 삽입·열너비 통일·높이 보정) 일괄 복구
+#    ed.fix_table_grid() 로 표만 따로 고칠 수도 있음. 반환 tables={'celladdr':N,'colgrid':[..],'height':[..]}
+```
+복구는 cellAddr를 colSpan/rowSpan 반영해 좌표 계산·삽입하고, ragged 행은 '가장 흔한 열너비 패턴'으로
+통일한다(열만 정렬, 텍스트 보존). **복구 후 반드시 baking** 으로 행 높이를 재계산시킨다.
+
+> 진단 팁: 자동화 `Open`이 안 끝나면 `Get-Process Hwp`의 **CPU가 계속 오르는지** 본다 —
+> 계속 오르면(>수백 초) 손상(루프), 금방 끝나면 정상. `check_tables`로 표를 먼저 점검하면 빠르다.
+
+### 16-4. 검증의 함정 (이 환경)
+한글 COM `Open`/baking으로 최종 확인하는 게 정석이나, **헤드리스/자동화 세션에서는
+`HWPFrame.HwpObject.Open`이 모달 대화상자에서 멈추거나 손상 문서에서 무한 루프**할 수 있다.
+- **모달 대기**(CPU 거의 0) → 환경 문제일 수 있음. `validate`가 통과하면 구조는 정상으로 본다.
+- **CPU 계속 상승**(수백 초) → 진짜 손상(표 격자 루프 등). `check_tables`/`check_refs`로 원인을 찾는다.
+baking이 안 끝나면 먼저 `validate(pre_bake=False)`가 빈 결과인지, `check_tables`가 `[]`인지로 판단.
 
 ---
 
