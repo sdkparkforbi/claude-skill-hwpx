@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>제목 — 부제</title>
+<!--
+  관공서 개조식 공문 범용 템플릿.
+  · 이 한 파일(마스터)에서 PDF·HWPX·DOCX·웹 4형식을 동일하게 뽑는다.
+  · build_gaejo.build(이파일, 출력경로, "표지 다음에 올 첫 섹션 제목")
+  · 규칙: 섹션헤더=table.sec(번호칸+제목), 개조식 기호는 실제 문자(❍ ❐ - *),
+    들여쓰기는 문단 margin, 표는 table.d, 강조는 <b>/<span class="u">.
+  · 색/글꼴만 바꾸려면 :root 변수와 body font-family 수정.
+-->
+<style>
+  @page{size:A4;margin:20mm 20mm 18mm}
+  :root{--navy:#1f4e9c;--navy-d:#173a75;--ink:#1a1a1a;--soft:#333;--line:#c9d3e4}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:11pt;line-height:1.75;color:var(--ink);-webkit-font-smoothing:antialiased}
+  .doc{max-width:180mm;margin:0 auto}
+  .cover{height:247mm;display:flex;flex-direction:column;page-break-after:always}
+  .cover .bar{border-top:3.5pt solid var(--navy)}
+  .cover .mid{margin-top:78mm;text-align:center}
+  .cover .kick{font-size:14pt;font-weight:700;color:var(--navy);margin-bottom:9mm}
+  .cover h1{font-size:32pt;font-weight:800;letter-spacing:.35em;color:#111;text-indent:.35em;margin:6mm 0}
+  .cover .date{margin-top:34mm;text-align:center;font-size:14pt;font-weight:700}
+  .cover .org{margin-top:52mm;text-align:center;font-size:13pt;font-weight:700;color:#333}
+  table.sec{width:100%;border-collapse:collapse;margin:11mm 0 4.5mm;page-break-after:avoid}
+  table.sec td{padding:0;border:0}
+  table.sec td.num{width:8.5mm;height:8.5mm;background:var(--navy);color:#fff;font-size:12pt;font-weight:800;text-align:center;vertical-align:middle;border-bottom:1.6pt solid var(--navy)}
+  table.sec td.tit{font-size:14.5pt;font-weight:800;color:#111;padding-left:4mm;vertical-align:bottom;padding-bottom:1.5mm;border-bottom:1.6pt solid var(--navy)}
+  .sub-lead{color:#444;font-size:10.5pt;margin:1mm 0 3.5mm}
+  .grp{font-size:11.5pt;font-weight:800;color:var(--navy);margin:5.5mm 0 2.5mm}
+  p.o{margin:2.6mm 0 2.6mm 9mm;text-indent:-6mm}
+  p.sq{margin:2.6mm 0 2.6mm 9mm;text-indent:-6mm}
+  p.dash{margin:1.8mm 0 1.8mm 16mm;text-indent:-5mm;color:var(--soft)}
+  p.star{margin:1.7mm 0 1.7mm 16mm;text-indent:-5mm;color:var(--soft)}
+  .mk{color:var(--navy);font-weight:700}
+  b{color:#111}
+  .u{border-bottom:1.4pt solid var(--navy);font-weight:700;color:var(--navy-d)}
+  table.d{width:100%;border-collapse:collapse;margin:4mm 0 5mm;font-size:10pt}
+  table.d th,table.d td{border:0.5pt solid #8a97ad;padding:2mm 3mm;vertical-align:middle}
+  table.d th{background:#eaf0f8;font-weight:700;text-align:center;color:var(--navy-d)}
+  table.d td.l,table.d th.l{text-align:left}
+  caption{caption-side:top;text-align:left;font-weight:700;font-size:10.5pt;margin-bottom:2mm;color:#111}
+  .box{border:0.5pt solid var(--line);border-left:3pt solid var(--navy);background:#f6f9ff;padding:3.5mm 5mm;margin:4mm 0;font-size:10.5pt;color:var(--soft)}
+  .box .t{font-weight:800;color:var(--navy-d);margin-bottom:1.5mm}
+  nav.topnav{position:fixed;top:10px;left:10px;z-index:99999;display:flex;gap:6px;font-family:'맑은 고딕'}
+  nav.topnav a{background:rgba(40,44,54,.85);color:#fff;text-decoration:none;border-radius:999px;padding:6px 14px;font-size:13px;font-weight:700}
+  @media print{nav.topnav{display:none}}
+</style>
+</head>
+<body>
+<div class="doc">
+
+<!-- 표지: build_gaejo 의 세 번째 인자로 "표지 다음 첫 섹션 제목"을 주면 표지가 독립 페이지가 됨 -->
+<section class="cover">
+  <div class="bar"></div>
+  <div class="mid">
+    <div class="kick">상위 과제명 / 부제</div>
+    <div class="bar"></div>
+    <h1>문서 제목(안)</h1>
+    <div class="bar"></div>
+  </div>
+  <div class="date">2026. 0.</div>
+  <div class="org">발신 기관명</div>
+</section>
+
+<!-- 섹션: 번호칸(파란 배경·흰 글씨) + 제목 -->
+<table class="sec"><tr><td class="num">1</td><td class="tit">첫 번째 섹션 제목</td></tr></table>
+<p class="sub-lead">섹션을 여는 한 줄 설명(선택).</p>
+
+<p class="o"><span class="mk">❍</span> 주 항목은 명사형으로 끝맺음(~함 / ~됨 / ~예정임)</p>
+<p class="dash">- 하위 항목(대시)</p>
+<p class="dash">- 핵심 수치는 <b>굵게</b>, 밑줄 강조는 <span class="u">이렇게</span></p>
+<p class="o"><span class="mk">❍</span> 또 다른 주 항목</p>
+<p class="star">* 부연 설명(별표)</p>
+
+<div class="grp">❐ 소분류(Main / Sub 등)</div>
+<p class="o"><span class="mk">❍</span> 소분류 아래 항목</p>
+
+<table class="d">
+  <caption>표 1. 표 제목</caption>
+  <tr><th class="l">항목</th><th>구분</th><th class="l">비고</th></tr>
+  <tr><td class="l">내용</td><td>값</td><td class="l">설명</td></tr>
+</table>
+
+<div class="box"><div class="t">※ 참고</div>강조하거나 원칙을 밝힐 내용을 박스로.</div>
+
+<table class="sec"><tr><td class="num">2</td><td class="tit">두 번째 섹션 제목</td></tr></table>
+<p class="o"><span class="mk">❍</span> 섹션 번호는 <code>td.num</code> 값만 바꾸면 됨</p>
+
+</div>
+</body>
+</html>

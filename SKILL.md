@@ -1,6 +1,6 @@
 ---
 name: hwpx
-description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성·읽기·편집·변환·복구한다. 생성은 표·셀병합·배경색·글자모양·이미지·머리말/꼬리말·쪽번호·가로/세로 페이지 지원. 읽기는 기존 .hwp/.hwpx에서 본문·표 추출(한컴 없이)과 교정추적(변경 내용) 삽입/삭제 분리·변경 전후본 추출. 편집은 양식 hwpx의 플레이스홀더 치환·표 행 추가. 변환은 hwp→hwpx, →pdf/docx/md. 복구는 한글이 "열 수 없는 문서"로 거부하거나 열 때 무한 루프하는 hwpx를 검사·자동수정(참조 무결성=없는 스타일/속성 ID 참조, 표 격자 손상=셀 cellAddr 누락·행별 열너비 불일치). 사용자가 "hwpx로 출력/저장/변환/만들어", "한글 파일/문서로 만들어", "hwp 내용 읽어/추출", "변경 내용/교정추적/뭐가 고쳐졌는지 봐줘", "hwp를 hwpx로 변환", "양식에 내용 채워줘", "시간표/회의록/표를 hwpx로", "hwpx가 안 열려/손상됐어 고쳐줘" 등을 요청할 때 트리거. (Windows + 한컴오피스 설치 필요; 읽기/편집/복구/일부 변환은 한컴 없이 동작)
+description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성·읽기·편집·변환·복구한다. 생성은 표·셀병합·배경색·글자모양·이미지·머리말/꼬리말·쪽번호·가로/세로 페이지 지원. 읽기는 기존 .hwp/.hwpx에서 본문·표 추출(한컴 없이)과 교정추적(변경 내용) 삽입/삭제 분리·변경 전후본 추출. 편집은 양식 hwpx의 플레이스홀더 치환·표 행 추가. 변환은 hwp→hwpx, →pdf/docx/md. 복구는 한글이 "열 수 없는 문서"로 거부하거나 열 때 무한 루프하는 hwpx를 검사·자동수정(참조 무결성=없는 스타일/속성 ID 참조, 표 격자 손상=셀 cellAddr 누락·행별 열너비 불일치). 사용자가 "hwpx로 출력/저장/변환/만들어", "한글 파일/문서로 만들어", "hwp 내용 읽어/추출", "변경 내용/교정추적/뭐가 고쳐졌는지 봐줘", "hwp를 hwpx로 변환", "양식에 내용 채워줘", "시간표/회의록/표를 hwpx로", "hwpx가 안 열려/손상됐어 고쳐줘", "개조식 공문/보고서/연구계획서를 hwpx로", "한 소스로 pdf·hwpx·docx·웹 4형식 똑같이" 등을 요청할 때 트리거(개조식 관공서 문서는 gaejo/ 모듈). (Windows + 한컴오피스 설치 필요; 읽기/편집/복구/일부 변환은 한컴 없이 동작)
 ---
 
 # HWPX 생성·읽기·편집·변환 스킬
@@ -20,6 +20,7 @@ description: 파이썬으로 한글 문서(.hwpx)를 코드로 생성·읽기·�
 - `make_seed.py` — 기준 시드(_seed.hwpx)를 새로 만들 때(다른 PC/한글 버전).
 - `_seed.hwpx` — 기준 템플릿(스타일·색 borderFill·글자 charPr 정의 보유).
 - `GUIDE.md` — 상세 가이드(v7).
+- `gaejo/` — **관공서 개조식 문서** 생성 모듈(별도 접근). 하나의 HTML 마스터에서 **웹·PDF·HWPX·DOCX 4형식을 같은 개조식 서식**으로 뽑는다(표지·번호 네모칸 헤더·❍/❐/-/* 기호·명사형·개요 스타일). 상세는 `gaejo/README.md`.
 
 ## 읽기 / 편집 / 변환 빠른 사용
 ```python
@@ -60,6 +61,17 @@ hwpx_convert.to_docx("양식.hwpx")                   # → .docx (python-docx, 
 hwpx_convert.to_markdown("RFP.hwp")                 # → .md   (순수 파이썬)
 ```
 > 받은 **.hwp RFP/양식**은 `hwp_to_hwpx`로 올린 뒤 read/edit하면 표 구조까지 다룰 수 있다.
+
+## 관공서 개조식 문서(4형식 일치) — `gaejo/`
+서식이 복잡한 개조식 공문·보고서·연구계획서를 **HTML 마스터 한 벌**로 쓰고, **웹·PDF·HWPX·DOCX 4형식을 같은 서식**으로 뽑을 때 쓴다(hwpxgen과 별개 접근). PDF는 playwright, HWPX/DOCX는 한글 COM + XML 후처리.
+```python
+import sys; sys.path.insert(0, r"~/.claude/skills/hwpx/gaejo")   # 실제 경로
+import build_gaejo
+build_gaejo.build("연구계획서.html", "dist/research-plan", "연구 배경 및 목적")  # → .pdf/.hwpx/.docx
+```
+- 템플릿: `gaejo/templates/`(research_plan·data_status·data_request·official_form). 색·글꼴은 `:root` 변수만 수정.
+- 규칙: 섹션헤더=`table.sec`, 기호는 실제 문자(❍ ❐ - *), 강조 `<b>`/`.u`, 표 `table.d`, 박스 `.box`, 문체 명사형.
+- 개요 스타일·표 여백·쪽 나눔·캡션 처리 등 한글 함정 대응은 자동. 상세는 `gaejo/README.md`.
 
 ## 작업 절차
 

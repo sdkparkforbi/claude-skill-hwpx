@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>주세 정책이 경제·물가에 미치는 영향 연구 — 연구계획서(안)</title>
+<style>
+  @page{size:A4;margin:20mm 20mm 18mm}
+  :root{--navy:#1f4e9c;--navy-d:#173a75;--ink:#1a1a1a;--soft:#333;--line:#c9d3e4}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:11pt;line-height:1.7;color:var(--ink);-webkit-font-smoothing:antialiased}
+  .doc{max-width:180mm;margin:0 auto}
+
+  /* 표지 */
+  .cover{height:247mm;display:flex;flex-direction:column;page-break-after:always}
+  .cover .bar{border-top:3.5pt solid var(--navy)}
+  .cover .mid{margin-top:78mm;text-align:center}
+  .cover .kick{font-size:14pt;font-weight:700;color:var(--navy);margin-bottom:9mm}
+  .cover h1{font-size:33pt;font-weight:800;letter-spacing:.5em;color:#111;text-indent:.5em;margin:6mm 0}
+  .cover .date{margin-top:34mm;text-align:center;font-size:14pt;font-weight:700}
+  .cover .org{margin-top:52mm;text-align:center;font-size:13pt;font-weight:700;color:#333}
+  .cover .org .logo{color:var(--navy)}
+
+  /* 섹션 헤더 = 표(번호 네모칸 + 제목 + 밑줄) — 한글도 동일하게 렌더 */
+  table.sec{width:100%;border-collapse:collapse;margin:11mm 0 4.5mm;page-break-after:avoid}
+  table.sec td{padding:0;border:0}
+  table.sec td.num{width:8.5mm;height:8.5mm;background:var(--navy);color:#fff;font-size:12pt;font-weight:800;
+                   text-align:center;vertical-align:middle;border-bottom:1.6pt solid var(--navy)}
+  table.sec td.tit{font-size:14.5pt;font-weight:800;color:#111;padding-left:4mm;vertical-align:bottom;
+                   padding-bottom:1.5mm;border-bottom:1.6pt solid var(--navy)}
+
+  h3{font-size:12pt;font-weight:800;color:var(--navy-d);margin:6mm 0 2.5mm;page-break-after:avoid}
+  .sub-lead{color:#444;font-size:10.5pt;margin:1mm 0 3.5mm}
+  .grp{font-size:11.5pt;font-weight:800;color:var(--navy);margin:5.5mm 0 2.5mm}
+
+  /* 개조식 문단 — 기호는 실제 문자, 들여쓰기는 문단 여백(한글 호환) */
+  p.o   {margin:2.6mm 0 2.6mm 9mm; text-indent:-6mm}
+  p.sq  {margin:2.6mm 0 2.6mm 9mm; text-indent:-6mm}
+  p.dash{margin:1.8mm 0 1.8mm 16mm; text-indent:-5mm; color:var(--soft)}
+  p.star{margin:1.7mm 0 1.7mm 16mm; text-indent:-5mm; color:var(--soft)}
+  .mk{color:var(--navy);font-weight:700}
+  b{color:#111}
+  .u{border-bottom:1.4pt solid var(--navy);font-weight:700;color:var(--navy-d)}
+
+  /* 표 */
+  table.d{width:100%;border-collapse:collapse;margin:4mm 0 5mm;font-size:10pt}
+  table.d th,table.d td{border:0.5pt solid #8a97ad;padding:2mm 3mm;vertical-align:middle}
+  table.d th{background:#eaf0f8;font-weight:700;text-align:center;color:var(--navy-d)}
+  table.d td.l,table.d th.l{text-align:left}
+  caption{caption-side:top;text-align:left;font-weight:700;font-size:10.5pt;margin-bottom:2mm;color:#111}
+
+  /* 참고 박스 */
+  .box{border:0.5pt solid var(--line);border-left:3pt solid var(--navy);background:#f6f9ff;padding:3.5mm 5mm;margin:4mm 0;font-size:10.5pt;color:var(--soft)}
+  .box .t{font-weight:800;color:var(--navy-d);margin-bottom:1.5mm}
+  .ref{font-size:9.5pt;color:#444;margin:1.5mm 0 1.5mm 6mm;text-indent:-6mm}
+  nav.topnav{position:fixed;top:10px;left:10px;z-index:99999;display:flex;gap:6px;font-family:'맑은 고딕'}
+  nav.topnav a{background:rgba(40,44,54,.85);color:#fff;text-decoration:none;border-radius:999px;padding:6px 14px;font-size:13px;font-weight:700}
+  nav.topnav a.b{background:rgba(40,44,54,.6)}
+  @media print{nav.topnav{display:none}}
+</style>
+</head>
+<body>
+<nav class="topnav"><a href="/juryuse/">🏠 홈</a><a class="b" href="javascript:history.back()">← 뒤로</a></nav>
+<div class="doc">
+
+<!-- ============ 표지 ============ -->
+<section class="cover">
+  <div class="bar"></div>
+  <div class="mid">
+    <div class="kick">주세 정책이 경제·물가에 미치는 영향 연구</div>
+    <div class="bar"></div>
+    <h1>연구계획서(안)</h1>
+    <div class="bar"></div>
+  </div>
+  <div class="date">2026. 7.</div>
+  <div class="org"><span class="logo">◕‿◕</span> 한국주류산업협회</div>
+</section>
+
+<!-- ============ 1 ============ -->
+<table class="sec"><tr><td class="num">1</td><td class="tit">연구 배경 및 목적</td></tr></table>
+<p class="sub-lead">의뢰서 「1. 의뢰 배경」에 대한 연구팀의 이해와, 이를 공개 데이터로 확인한 결과임.</p>
+
+<p class="o"><span class="mk">❍</span> 코로나19 이후 국내 주류산업은 음주문화 변화·인구구조 고령화·고물가에 따른 소비 위축이 겹치면서 <b>지속적 수요 감소</b>를 겪고 있으며, 단기 반등 가능성은 제한적임</p>
+<p class="dash">- 전체 주류 출고량 <b>2015년 376만㎘ → 2024년 322만㎘</b>로 약 14.2% 감소(국세청 국세통계)</p>
+<p class="dash">- 가정용 주류지출이 가계 소비지출에서 차지하는 비중 <b>2008년 1.54% → 2024년 0.75%</b>로 반감(재정패널)</p>
+
+<p class="o"><span class="mk">❍</span> 주류산업의 위축은 제조업에 국한되지 않고 <b>외식·유통·소매 등 연관산업과 동네 소상공인</b>으로 파급됨</p>
+<p class="dash">- 대표 업종인 <b>호프주점 약 47%, 간이주점 약 52% 감소</b>(사업자 수 기준, 예비분석)</p>
+<p class="dash">- 제조·유통·판매 종사자의 고용 안정성에도 부정적 영향 우려</p>
+
+<p class="o"><span class="mk">❍</span> 협회는 소비자 부담 완화·소상공인 지원·주류 생태계 지속가능성 확보를 위해 다음 <b>세 가지 세제지원</b>을 정부에 건의할 예정임</p>
+<p class="dash">- ① <b>종량세 주종 주세 인하</b> — 맥주 주세의 합리적 수준 도출</p>
+<p class="dash">- ② <b>종가세 주종 기준판매비율 확대</b> — 소주 등 세부담 경감</p>
+<p class="dash">- ③ <b>교육세율 합리적 조정</b> — 주종별 10~30% → 10%로 통일</p>
+
+<p class="o"><span class="mk">❍</span> 본 연구는 건의에 앞서 세제 합리화가 <span class="u">물가·서민경제·연관산업에 미치는 기대효과를 실증적으로 선제 규명</span>함을 목적으로 함</p>
+
+<!-- ============ 2 ============ -->
+<table class="sec"><tr><td class="num">2</td><td class="tit">연구 가설 — 세 개의 질문</td></tr></table>
+<p class="sub-lead">의뢰서의 연구내용을 관통하는 세 개의 인과 질문으로 구조화함. 세 가설은 <b>세금 → 가격 → 수요·부담 → 세수</b>의 한 흐름으로 연결됨.</p>
+
+<p class="sq"><span class="mk">❐</span> <b>H1 (전가·물가·파급)</b> : 세제 합리화에 따른 출고가 인하가 <b>소비자가·물가로 얼마나 전가</b>되며, 그 효과가 외식·유통 등 연관산업으로 어떻게 파급되는가</p>
+<p class="sq"><span class="mk">❐</span> <b>H2 (수요·매출·형평)</b> : 가격 변화가 주종별 <b>수요·매출에 미치는 반응(탄력성)</b>과, 그 부담이 <b>소득계층별로 어떻게 분포(형평성)</b>하는가</p>
+<p class="sq"><span class="mk">❐</span> <b>H3 (세수)</b> : 세제 변화가 <b>세수에 미치는 순효과</b>는 얼마이며, 소비 회복으로 어느 정도 상쇄되는가</p>
+
+<table class="d">
+  <caption>표 1. 세 가설과 의뢰서 연구내용의 대응</caption>
+  <tr><th style="width:16%">가설</th><th class="l">핵심 질문</th><th style="width:26%">대응 연구내용</th></tr>
+  <tr><td><b>H1</b><br>전가·파급</td><td class="l">세금 인하가 출고가·소비자가로 얼마나 전가되고, 물가·연관산업·일자리로 얼마나 확산되는가</td><td class="l">Main · Sub① 일부</td></tr>
+  <tr><td><b>H2</b><br>수요·형평</td><td class="l">가격 변화에 수요·매출이 어떻게 반응하며, 부담이 소득계층별로 고른가</td><td class="l">Main · Sub① 필요성</td></tr>
+  <tr><td><b>H3</b><br>세수</td><td class="l">세제 변화의 세수 순효과와 회복 폭은 어떠한가</td><td class="l">Sub② 조세수입 분석</td></tr>
+</table>
+
+<!-- ============ 3 ============ -->
+<table class="sec"><tr><td class="num">3</td><td class="tit">가설별 근거 및 예비분석</td></tr></table>
+<p class="sub-lead">각 가설을 「선행연구·뉴스 → 예비분석으로 확인한 것 → 본 연구에서 정밀 검증할 것」 순으로 정리함.</p>
+
+<div class="grp">❐ H1 · 전가·물가·연관산업 파급</div>
+<p class="o"><span class="mk">❍</span> 선행연구는 주류 세금이 대체로 <b>완전전가 이상(과대전가)</b>으로 나타나며, 특히 맥주에서 그 경향이 강함을 보고함(Nelson &amp; Moran, 2020; Shang et al., 2020)</p>
+<p class="star">* 다만 과점시장에서는 감세분 일부를 기업이 흡수할 수 있다는 실증도 존재(Miravete et al., 2018)</p>
+<p class="star">* 국내에서도 종량세 전환의 세수·소비·소매가격 영향을 분석한 연구가 있음(이준규·송은주, 2018; 이기환, 2025)</p>
+<p class="o"><span class="mk">❍</span> 예비분석 — 전가의 실체를 <b>국세청(세무신고)과 식약처(주류 판매실적)</b> 두 독립 자료로 교차검증함</p>
+<p class="dash">- 소주 세전출고가 비율이 2018~2022년 0.99~1.05로 일치, <b>2024년 0.796으로 하락</b>, 기준판매비율 이론값(0.78)과 오차 2%로 부합</p>
+<p class="dash">- 2024년 소주 원가는 약 12.9% 상승했으나 세부담 13.0% 경감으로 상쇄되어 <b>소비자가는 0.3%만 상승</b></p>
+<p class="o"><span class="mk">❍</span> 본 연구에서 정밀 검증할 것</p>
+<p class="dash">- 2024년 세제 미변동 주종을 대조군으로 한 <b>이중차분(DiD)</b>으로 순수 전가율(Δ가격/Δ세금) 추정</p>
+<p class="dash">- 한국은행 산업연관표로 출고가·수요 변화의 <b>연관산업 생산·부가가치·고용 파급</b> 산출</p>
+
+<div class="grp">❐ H2 · 수요·매출과 형평</div>
+<p class="o"><span class="mk">❍</span> 가격탄력성 표준 메타분석은 <b>맥주 −0.46, 증류주 −0.80, 전체 −0.51</b> 수준으로, 맥주가 가장 비탄력적임을 보고함(Wagenaar et al., 2009)</p>
+<p class="o"><span class="mk">❍</span> 예비분석 — 국내 자료 기준 <b>주종 간 가격탄력성 약 −0.26</b>, 소득탄력성 <b>+0.15~0.30</b>으로 추정되며, 재정패널에서 <b>중산층의 주류 부담이 상대적으로 큰</b> 형평 구조가 관찰됨</p>
+<p class="o"><span class="mk">❍</span> 본 연구에서 정밀 검증할 것 — 주종·계층별 수요함수 추정, 세제 변화의 매출·계층 부담 시뮬레이션</p>
+
+<div class="grp">❐ H3 · 세수</div>
+<p class="o"><span class="mk">❍</span> 세율 인하는 단기 세수 감소를 유발하나, 소비 회복분이 일부 상쇄함</p>
+<p class="o"><span class="mk">❍</span> 예비분석 — 세 가지 세제 동시 시행 시 <b>순세수 약 −1,063~1,476억원</b> 규모로 추정(정밀 검증 필요)</p>
+<p class="o"><span class="mk">❍</span> 본 연구에서 정밀 검증할 것 — 탄력성 반영 세수 시뮬레이션, 주세·교육세·부가세 파급 포함 순효과 산출</p>
+
+<!-- ============ 4 ============ -->
+<table class="sec"><tr><td class="num">4</td><td class="tit">연구 내용에 대한 답</td></tr></table>
+<p class="sub-lead">의뢰서 「2. 연구 내용」의 Main · Sub① · Sub② 각 항목에 대한 연구팀의 수행 계획임.</p>
+
+<div class="grp">❐ Main : 주류 가격 변동(인하)과 경제·물가 안정의 상관관계</div>
+<p class="o"><span class="mk">❍</span> 세제 합리화를 통한 출고가 인하가 <b>소비자물가에 미치는 영향</b> — 소매·외식 CPI 분해로 전가의 시차·크기 측정</p>
+<p class="o"><span class="mk">❍</span> 출고가 변화가 <b>소상공인 매출에 미치는 영향</b> — 업종별 사업자 수·매출 지표와 연계 분석</p>
+<p class="o"><span class="mk">❍</span> 세제 합리화가 <b>연관산업(제조·물류·소매)에 미치는 영향</b> — 산업연관표 기반 생산·고용 파급</p>
+<p class="o"><span class="mk">❍</span> 세제 정책별 효과 및 필요성 도출</p>
+<p class="dash">- 종량세 인하 : 맥주 주세의 합리적 수준 도출</p>
+<p class="dash">- 종가세 조정 : 기준판매비율 확대 필요성</p>
+<p class="dash">- 교육세 조정 : 세율 통일(10~30% → 10%)의 효과</p>
+
+<div class="grp">❐ Sub① : 주류 세제 합리화 필요성</div>
+<p class="o"><span class="mk">❍</span> 주류 관련 세금의 <b>국제 현황 조사</b></p>
+<p class="star">* OECD 주요국과 직접 비교 가능한 <b>종량세 주종(맥주) 위주</b>로 주세 수준 비교</p>
+<p class="star">* 주세 이외 목적세(교육세 등) 부과 여부 조사</p>
+<p class="o"><span class="mk">❍</span> 기준판매비율 적정성 — 도입 취지 및 적정 적용 비율의 당위성 검토</p>
+<p class="o"><span class="mk">❍</span> 주류 교육세 차등부과의 적정성 검토</p>
+
+<div class="grp">❐ Sub② : 주류 세제와 조세수입의 상관관계</div>
+<p class="o"><span class="mk">❍</span> 연도별 <b>주세 비중 및 사용 현황</b> — 주세가 국가 예산에 미치는 영향</p>
+<p class="o"><span class="mk">❍</span> 교육세 중 <b>주류교육세가 미치는 영향</b> 분석</p>
+
+<div class="box">
+  <div class="t">※ 자료의 원칙</div>
+  정책 제안의 근거 자료이므로 <b>정확성·객관성·중립성</b>을 갖춘 자료로 구축함. 모든 수치는 공개 공식통계(국세청·식약처·한국은행·통계청)와 승인받은 미시데이터(재정패널)에 근거하며, 유리한 결과와 불리한 결과를 함께 제시함.
+</div>
+
+<!-- ============ 5 ============ -->
+<table class="sec"><tr><td class="num">5</td><td class="tit">연구 방법 및 데이터</td></tr></table>
+
+<h3>가. 분석 방법</h3>
+<p class="o"><span class="mk">❍</span> <b>전가·물가</b> : 이중차분(DiD)·사건연구로 세제 변화의 순수 전가율과 시차 추정</p>
+<p class="o"><span class="mk">❍</span> <b>수요·형평</b> : 주종·소득계층별 수요함수 추정(가격·소득탄력성)</p>
+<p class="o"><span class="mk">❍</span> <b>파급</b> : 산업연관표(한국은행)로 연관산업 생산·부가가치·고용 유발 산출</p>
+<p class="o"><span class="mk">❍</span> <b>세수</b> : 탄력성 반영 세수 시뮬레이션(주세·교육세·부가세 포함)</p>
+
+<h3>나. 활용 데이터</h3>
+<table class="d">
+  <caption>표 2. 주요 데이터와 용도</caption>
+  <tr><th style="width:26%">데이터</th><th style="width:24%">출처</th><th class="l">용도</th></tr>
+  <tr><td class="l">주종별 출고량·세액</td><td>국세청 국세통계</td><td class="l">수량·세부담·시장구조</td></tr>
+  <tr><td class="l">주류 판매실적</td><td><b>식품의약품안전처</b></td><td class="l">전가 교차검증(H1)</td></tr>
+  <tr><td class="l">기업 원가·제품가</td><td><b>DART 전자공시</b></td><td class="l">전가·마진 구조(H1)</td></tr>
+  <tr><td class="l">소비자·생산자물가</td><td>한국은행 ECOS</td><td class="l">전가·물가 경로</td></tr>
+  <tr><td class="l">가계동향·시도 물가</td><td>통계청 KOSIS</td><td class="l">계층·지역 부담</td></tr>
+  <tr><td class="l">재정패널(NaSTaB)</td><td>한국조세재정연구원</td><td class="l">형평성·종단 분석</td></tr>
+  <tr><td class="l">선행 문헌</td><td>KCI·국제 학술</td><td class="l">탄력성·전가 근거</td></tr>
+</table>
+
+<!-- ============ 6 ============ -->
+<table class="sec"><tr><td class="num">6</td><td class="tit">추진 체계 · 일정 · 비용</td></tr></table>
+
+<h3>가. 연구 일정</h3>
+<p class="sq"><span class="mk">❐</span> <b>(7월)</b> 추진 계획 협의, 용역 계약 체결, 조사 착수 — 연구 내용·범위 확정</p>
+<p class="sq"><span class="mk">❐</span> <b>(8~9월)</b> 데이터 구축·실증분석 — 전가·수요·파급·세수 4개 축 병행</p>
+<p class="sq"><span class="mk">❐</span> <b>(10월 초)</b> 연구 완료 및 <b>보고서 발간</b> — 중간보고 시기는 별도 협의</p>
+
+<h3>나. 기타</h3>
+<p class="sq"><span class="mk">❐</span> 공청회·토론회 진행 시 <b>토론자로 참여(발제 병행)</b></p>
+
+<h3>다. 용역 비용(안)</h3>
+<p class="sq"><span class="mk">❐</span> 총 <b>30,000,000원(VAT 포함) 내외</b> — 디자인·인쇄비 제외, 조사내용 수정·보완 비용 포함</p>
+
+<!-- ============ 7 ============ -->
+<table class="sec"><tr><td class="num">7</td><td class="tit">참고문헌</td></tr></table>
+<p class="ref">Wagenaar, A. C., Salois, M. J., &amp; Komro, K. A. (2009). Effects of beverage alcohol price and tax levels on drinking: a meta-analysis of 1003 estimates from 112 studies. <i>Addiction</i>, 104(2), 179–190. https://doi.org/10.1111/j.1360-0443.2008.02438.x</p>
+<p class="ref">Nelson, J. P., &amp; Moran, J. R. (2020). Effects of alcohol taxation on prices: A systematic review and meta-analysis of pass-through rates. <i>The B.E. Journal of Economic Analysis &amp; Policy</i>, 20(1), 20190134. https://doi.org/10.1515/bejeap-2019-0134</p>
+<p class="ref">Shang, C., Ngo, A., &amp; Chaloupka, F. J. (2020). The pass-through of alcohol excise taxes to prices in OECD countries. <i>The European Journal of Health Economics</i>, 21(6). https://doi.org/10.1007/s10198-020-01177-w</p>
+<p class="ref">Miravete, E. J., Seim, K., &amp; Thurk, J. (2018). Market power and the Laffer curve. <i>Econometrica</i>, 86(5), 1651–1687. https://doi.org/10.3982/ECTA12307</p>
+<p class="ref">이준규, 송은주 (2018). 주세의 종량세 전환이 외부효과에 미치는 영향. <i>세무와회계저널</i>, 19(2), 63–87. https://doi.org/10.35850/KJTA.19.2.03</p>
+<p class="ref">이기환 (2025). 맥주 주세가 소매점 번들링에 미치는 영향: 종가세에서 종량세로의 전환. <i>산업경제연구</i>, 38(3), 309–336. https://doi.org/10.22558/jieb.2025.6.38.3.309</p>
+<p class="ref">데이터 출처: 국세청 국세통계포털; 식품의약품안전처 주류 판매실적; 한국은행 ECOS; 통계청 KOSIS; 한국조세재정연구원 재정패널(NaSTaB); 금융감독원 전자공시(DART).</p>
+
+</div>
+</body>
+</html>
